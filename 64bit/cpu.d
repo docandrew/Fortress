@@ -1,6 +1,6 @@
 module cpu;
 
-public immutable string cpuFeatures[32] = [ 
+public immutable string[32] cpuFeatures = [ 
 	"x87",
 	"vme",
 	"de",

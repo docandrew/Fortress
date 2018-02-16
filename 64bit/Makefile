@@ -2,12 +2,23 @@ all:
 	yasm --arch=x86 -f elf64 boot.asm -o boot.o	
 	yasm --arch=x86 -f elf64 boot64.asm -o boot64.o
 	yasm --arch=x86 -f elf64 cpuid.asm -o cpuid.o
-	dmd -v -c -m64 main.d object.d cpu.d util.d multiboot.d screen.d runtime/typeinfo/ti_uint.d -defaultlib= -noboundscheck -release
-	#gcc -m64 -omy_kernel cpuid.o cpu.o util.o multiboot.o screen.o main.o object.o ti_uint.o boot.o -T linker.ld -nostdlib
-	ld -n -o my_kernel -T linker.ld cpuid.o cpu.o util.o multiboot.o screen.o main.o object.o ti_uint.o boot.o boot64.o
+	yasm --arch=x86 -f elf64 isr.asm -o isr.o
+	dmd -betterC -v -c -m64 main.d cpu.d cpuio.d util.d interrupt.d keyboard.d multiboot.d memory.d screen.d -noboundscheck -release
+#	gcc -m64 -omy_kernel cpuid.o cpu.o util.o multiboot.o screen.o main.o boot.o -T linker.ld -nostdlib
+#	
+#	strip out D runtime & typeinfo stuff until -betterC does it
+#	 h/t  theartofmachinery.com/2016/12/18/d_without_runtime.html
+	objcopy -R '.data.*[0-9]TypeInfo_*' -R '.[cd]tors.*' -R .text.d_dso_init -R minfo -R .eh_frame -R deh -R .data.DW.ref.__dmd_personality_v0 --strip-unneeded multiboot.o
+	objcopy -R '.data.*[0-9]TypeInfo_*' -R '.[cd]tors.*' -R .text.d_dso_init -R minfo -R .eh_frame -R deh -R .data.DW.ref.__dmd_personality_v0 -R _d_dso_registry --strip-unneeded cpu.o	
+	objcopy -R '.data.*[0-9]TypeInfo_*' -R '.[cd]tors.*' -R .text.d_dso_init -R minfo -R .eh_frame -R deh -R .data.DW.ref.__dmd_personality_v0 -R _d_dso_registry --strip-unneeded memory.o
+	objcopy -R '.data.*[0-9]TypeInfo_*' -R '.[cd]tors.*' -R .text.d_dso_init -R minfo -R .eh_frame -R deh -R .data.DW.ref.__dmd_personality_v0 -R _d_dso_registry --strip-unneeded interrupt.o
+	objcopy -R '.data.*[0-9]TypeInfo_*' -R '.[cd]tors.*' -R .text.d_dso_init -R minfo -R .eh_frame -R deh -R .data.DW.ref.__dmd_personality_v0 -R _d_dso_registry --strip-unneeded keyboard.o
+
+	ld -n -o my_kernel -T linker.ld cpuid.o cpu.o cpuio.o interrupt.o isr.o keyboard.o memory.o util.o multiboot.o screen.o main.o boot.o boot64.o
 
 clean:
 	rm *.o
+	rm isodir/boot/my_kernel
 	rm my_kernel
 	rm my_kernel.iso
 

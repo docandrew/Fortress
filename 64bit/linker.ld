@@ -8,7 +8,7 @@ SECTIONS
 {
 	. = 0x00100000;					/*load kernel at 0x0010000*/
 	
-	kernelstart = .;				/*exports the "kernelstart" symbol so we can use it in our D code*/
+	kernelStart = .;				/*exports the "kernelstart" symbol so we can use it in our D code*/
 
 	.multiboot : {
 		*(.multiboot)
@@ -33,5 +33,5 @@ SECTIONS
 		*(.bss)
 		ebss = .;
 	}
-	kernelend = .;					/*exports the "kernelend" symbol*/
+	kernelEnd = .;					/*exports the "kernelEnd" symbol*/
 }

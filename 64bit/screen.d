@@ -135,8 +135,7 @@ void kprintf(T...)(immutable string format, T args)
 				{
 					case 'd':
 					{
-						static if(is(typeof(arg) : int))			//ensure that argument is capable of being passed to itoa()
-						{
+						static if(is(typeof(arg) : int)){			//ensure that argument is capable of being passed to itoa()
 							itoa(intbuffer.ptr, arg);
 							printz(intbuffer.ptr);
 						}
@@ -144,16 +143,14 @@ void kprintf(T...)(immutable string format, T args)
 					}
 					case 's':
 					{
-						static if(is(typeof(arg) : char*))			//make sure no type mismatch between 
-						{
+						static if(is(typeof(arg) : char*)){			//make sure no type mismatch between 
 							printz(arg);
 						}
 						break;
 					}
 					case 'S':
 					{
-						static if(is(typeof(arg) : string))
-						{
+						static if(is(typeof(arg) : string)){
 							print(arg);
 						}
 						break;
@@ -161,11 +158,18 @@ void kprintf(T...)(immutable string format, T args)
 					case 'x':
 					{
 						//print as hex 
-						static if(is(typeof(arg) : long))
-						{
+						static if(is(typeof(arg) : long)){
 							print(arg);
 						}
 						break;
+					}
+					case 'c':
+					{
+						//char
+						static if(is(typeof(arg) : char)){
+							print(arg);
+						}
+
 					}
 					default:
 					{
@@ -257,4 +261,18 @@ void kprintf(T...)(immutable string format, T args)
 {
 	printz(msg, color);
 	print('\n');
+}
+
+public void kassert(bool condition, string file = __FILE__, int line = __LINE__)
+{
+	if(!condition)
+	{
+		panic("Assertion failure", file, line);
+	}
+}
+
+public void panic(string message, string file = __FILE__, int line = __LINE__)
+{
+	kprintfln("KERNEL PANIC: %S in %S:%d", message, file, line);
+	while(true){};
 }

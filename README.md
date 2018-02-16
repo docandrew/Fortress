@@ -19,6 +19,9 @@ To build:
 To generate .iso (which could be used to burn a bootable CD-R or USB stick):
 >make iso
 
+Note that the above command relies on grub-mkrescue, which needs mtools and xorriso installed or it will silently fail to produce the .iso.
+"make iso" also needs the grub-pc-bin package installed to work correctly.
+
 To launch QEmu w/ appropriate arguments for aforementioned .iso:
 >make run
 

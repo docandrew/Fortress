@@ -154,10 +154,11 @@ enable_paging:
 	or eax, 1 << 5
 	mov cr4, eax
 
-	; set long mode bit in EFER (extended feature) register
+	; set long mode bit (8) and NXE (11) in EFER (extended feature) register
 	mov ecx, 0xC0000080
 	rdmsr
 	or eax, 1 << 8
+	or eax, 1 << 11
 	wrmsr
 
 	; enable paging in CR0 register
@@ -184,11 +185,11 @@ stack_ptr:
 
 section .rodata
 gdt64:
-	dq 0;
+	dq 0;												; 8-byte offset (null) 0x08 offset for code segment
 .code: equ $ - gdt64
 	dq (1<<44) | (1<<47) | (1<<41) | (1<<43) | (1<<53)	; code segment, 64-bit, present, read/write, executable
 .data: equ $ - gdt64
-	dq (1<<44) | (1<<47) | (1<<41) 						; data segment, present, read/write
+	dq (1<<44) | (1<<47) | (1<<41)						; data segment, present, read/write
 .pointer:
 	dw $ - gdt64 - 1
 	dq gdt64

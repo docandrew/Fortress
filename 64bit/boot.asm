@@ -1,4 +1,5 @@
-; from osdev.org/Bare_Bones_with_NASM & Phil Opp
+; 
+; featuring code from osdev.org/Bare_Bones_with_NASM & Phil Opp
 
 global stack_ptr
 extern long_mode_start
@@ -18,7 +19,7 @@ MultiBootHeader:
 	dd CHECKSUM
 
 ; Stack setup (see end for location)
-STACKSIZE equ 0x4000
+STACKSIZE equ 0x4096
 
 section .text
  
@@ -134,7 +135,8 @@ setup_page_tables:
 	mov ecx, 0			; counter var
 
 .map_p2_table:
-	; map each ecx-th entry to a page that starts at address 2MiB * ECX (identity-mapped - same virtual/physical addresses)
+	; map each ecx-th entry to a page that starts at address 2MiB * ECX 
+	; (identity-mapped - same virtual/physical addresses)
 	mov eax, 0x200000				; 2 MiB
 	mul ecx 						; start address of ecx-th page
 	or eax, 10000011b				; present + writable + huge (2MiB)
@@ -170,14 +172,16 @@ enable_paging:
 
 section .bss
 align 4096
+;p5_table
+;	resb 4096			;future Intel spec
 p4_table:
 	resb 4096
 p3_table:
 	resb 4096
 p2_table:
 	resb 4096
-p1_table:
-	resb 4096
+;p1_table:				;not used w/ 2MiB pages
+;	resb 4096
 	
 stack:
 	resb STACKSIZE

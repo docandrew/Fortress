@@ -4,10 +4,11 @@ module interrupt;
 //TODO: implement APIC, xAPIC and x2APIC
 
 import cpuio;
+import AssertPanic;
 import screen;
-//import util;
-
+import VirtMemory;
 import keyboard;
+import Timer;
 
 enum EXCEPTION
 {
@@ -109,6 +110,8 @@ extern(C) __gshared void isr128();
 
 __gshared IDTEntry[256] idt;
 __gshared IDTPointer idtp;
+
+//void function() interruptHandlers[];
 
 /**
  * Struct describing an entry into the long-mode Interrupt Descriptor Table
@@ -262,19 +265,22 @@ void installIRQs()
 }
 
 /**
- * Interrupt service handler
+ * Interrupt service handler / Exception Handler
  */
 public extern(C) __gshared void isr(ulong num, ulong err)
 {
-	kprintfln("Interrupt: %d, error code %d", cast(uint)num, cast(uint)err);
+	kprintfln("HW Exception: %d, error code %d", cast(uint)num, cast(uint)err);
 	
 	switch(num)
 	{
-		case 0:
+		case EXCEPTION.DIVIDE_BY_ZERO:
 			panic("Divide by Zero");
 			break;
-		case 13:
+		case EXCEPTION.GENERAL_PROTECTION:
 			panic("GPF");
+			break;
+		case EXCEPTION.PAGE_FAULT:
+			VirtMemory.pageFaultHandler(err);
 			break;
 		default:
 			panic("Unhandled Interrupt");
@@ -283,6 +289,8 @@ public extern(C) __gshared void isr(ulong num, ulong err)
 
 /**
  * Hardware IRQ service handler
+ * TODO: consider way of having other code install the ISRs instead of having everything
+ *  jump to this section.
  */
 public extern(C) __gshared void irq(ulong num, ulong err)
 {
@@ -291,7 +299,7 @@ public extern(C) __gshared void irq(ulong num, ulong err)
 
 	switch(irq){
 		case IRQ.TIMER:
-			//ignore timer interrupts (for now)
+			Timer.clockHandler();
 			break;
 		case IRQ.KEYBOARD:
 			//ubyte scanCode = inPort!(ubyte)(0x60);
@@ -339,5 +347,4 @@ public extern(C) __gshared void irq(ulong num, ulong err)
 
 	//tell the master controller that the interrupt is done
 	outPort!(ubyte)(cpuio.PIC1Command, cpuio.PICEnd);
-	
 }

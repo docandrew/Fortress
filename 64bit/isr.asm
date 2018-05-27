@@ -38,22 +38,22 @@ global isr31
 
 global isr128				; 0x80 is used for Linux syscalls, might as well duplicate that here
 
-global irq0;
-global irq1;
-global irq2;
-global irq3;
-global irq4;
-global irq5;
-global irq6;
-global irq7;
-global irq8;
-global irq9;
-global irq10;
-global irq11;
-global irq12;
-global irq13;
-global irq14;
-global irq15;
+global irq0
+global irq1
+global irq2
+global irq3
+global irq4
+global irq5
+global irq6
+global irq7
+global irq8
+global irq9
+global irq10
+global irq11
+global irq12
+global irq13
+global irq14
+global irq15
 
 ;
 ; PROCESSOR EXCEPTIONS

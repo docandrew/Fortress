@@ -1,5 +1,7 @@
 module elf;
 
+import multiboot;
+import screen;
 /*
 ELF object files contain:
 file header
@@ -129,3 +131,32 @@ enum SHT_HIUSER = 0x8FFFFFFF;	//specifies upper bound of range of indexes reserv
 	ulong 	sh_addralign; 	/* Address alignment boundary */
 	ulong 	sh_entsize; 	/* Size of entries, if section has table */
  }
+
+
+ void dumpELF(ref MultibootInfoStruct multibootInfo)
+ {
+ 	ELFSectionHeader *elfsec = &multibootInfo.ELFsec;
+	char *stringTable;
+
+	kprintfln(" ELF sections: %d, section size: %d, address: %x, str table idx: %d", elfsec.num, elfsec.size, elfsec.addr, elfsec.shndx);
+		
+	ELF64SectionHeader *sechdr;
+
+	//find section header string table:
+	if(elfsec.num > 0 && elfsec.shndx != SHN_UNDEF)
+	{
+		sechdr = cast(ELF64SectionHeader *)(elfsec.addr + (elfsec.shndx * elfsec.size));	//find string table section
+		stringTable = cast(char *)sechdr.sh_addr;											//find string table itself
+	}
+
+	//kprintfln(" ELF section %d, type: %d, size: %d, offset: %x", elfsec.shndx, sechdr.sh_type, cast(uint)sechdr.sh_size, cast(uint)sechdr.sh_offset);
+	//kprintfln(" addr of string table: %x: string table: ", cast(ulong)stringTable);
+	//printchars(stringTable + 11, 72);
+
+	//iterate through section headers
+	foreach(i; 0 .. elfsec.num)
+	{
+		sechdr = cast(ELF64SectionHeader *)(elfsec.addr + (i * elfsec.size));
+		kprintfln(" #%d, addr: %x, type: %d, size: %x, name: %s", i, sechdr.sh_addr, sechdr.sh_type, cast(uint)sechdr.sh_size, stringTable + sechdr.sh_name);
+	}
+}

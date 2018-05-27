@@ -39,8 +39,8 @@ void clockHandler()
 		counter = 0;
 	}
 
-	//if(counter % 1000 == 0)
-	//{
-	//	kprintf(".");
-	//}
+	if(counter % 1000 == 0)
+	{
+		kprintf(".");
+	}
 }

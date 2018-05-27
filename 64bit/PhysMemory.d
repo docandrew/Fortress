@@ -8,8 +8,11 @@ import AssertPanic;
 
 //public alias size_t Frame;
 
-public enum PAGE_SIZE = 2097152;				//2^21
-public enum PHYSICAL_MEMORY_BITS = 48;
+//TODO: put these in Config.d
+public enum PAGE_SIZE = 2097152;
+public enum FRAME_SIZE = 2097152;				//2^21
+public enum FRAME_SHIFT = 21;				//left or right shift to convert between page num and start address
+
 public enum MAX_PHYSICAL_FRAMES = 65536;
 
 public enum FrameStatus
@@ -23,7 +26,7 @@ public __gshared PhysicalMemory physicalMemory;
  * Round up to next page size
  *
  */
-size_t roundUp(size_t address, size_t multiple = PAGE_SIZE)
+size_t roundUp(size_t address, size_t multiple = FRAME_SIZE)
 {
 	if(multiple == 0){
 		return address;
@@ -47,12 +50,12 @@ struct Frame
 
 	static size_t frameNumber(size_t address)
 	{
-		return address / PAGE_SIZE;
+		return address >> FRAME_SHIFT;
 	}
 
 	static size_t startAddress(size_t frameNum)
 	{
-		return frameNum * PAGE_SIZE;
+		return frameNum << FRAME_SHIFT;
 	}
 }
 

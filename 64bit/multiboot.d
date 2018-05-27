@@ -1,5 +1,8 @@
 module multiboot;
 
+import AssertPanic;
+import util;
+
 //Multiboot Boot information struct (defined here for ELF)
 // See: https://www.gnu.org/software/grub/manual/multiboot/multiboot.html
 
@@ -149,3 +152,51 @@ struct APMTable
 
 
 //public __gshared MultiBootInfoDef MultiBootInfo;
+
+/**
+ * Using memory map from GRUB or other Multiboot loader, 
+ * this provides an iterator over the usable physical 
+  * memory areas. 
+ */
+struct MemoryAreas
+{
+	MultibootMemoryMap *mmap;				//address of the Multiboot Memory Map struct
+	uint mmapLength;						//length of this entire memory map
+	MultibootMemoryMap *currentArea;
+
+	this(ref MultibootInfoStruct multibootInfo)
+	{	
+		//ensure GRUB passed us a memory map
+		kassert(multibootInfo.flags.isBitSet(6));
+		
+		//print(" mmap address: "); print(multibootInfo.mmap_addr); 
+		//print(" mmap length: "); println(multibootInfo.mmap_length);
+
+		mmap = cast(MultibootMemoryMap *)multibootInfo.mmap_addr;
+		mmapLength = cast(MultibootMemoryMap *)multibootInfo.mmap_length;
+		currentArea = mmap;
+	}
+
+	@property MultibootMemoryMap front()
+	{
+		return *currentArea;
+	}
+
+	@property MultibootMemoryMap popFront()
+	{
+		MultibootMemoryMap ret = *currentArea;
+		currentArea = cast(MultibootMemoryMap *)(cast(ulong)currentArea + currentArea.size + currentArea.size.sizeof);
+		return ret;
+	}
+
+	@property bool empty()
+	{
+		if(cast(ulong)currentArea < cast(ulong)mmap + mmapLength){
+			return false;
+		}
+		
+		//reset to beginning in case next person wants to iterate over list.
+		currentArea = mmap;	
+		return true;
+	}
+}

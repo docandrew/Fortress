@@ -262,17 +262,3 @@ void kprintf(T...)(immutable string format, T args)
 	printz(msg, color);
 	print('\n');
 }
-
-public void kassert(bool condition, string file = __FILE__, int line = __LINE__)
-{
-	if(!condition)
-	{
-		panic("Assertion failure", file, line);
-	}
-}
-
-public void panic(string message, string file = __FILE__, int line = __LINE__)
-{
-	kprintfln("KERNEL PANIC: %S in %S:%d", message, file, line);
-	while(true){};
-}

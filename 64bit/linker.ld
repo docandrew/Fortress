@@ -6,7 +6,7 @@ ENTRY(_start)
    kernel image. */
 SECTIONS
 {
-	. = 0x00100000;					/*load kernel at 0x0010000*/
+	. = 0x00100000;					/*load kernel at 0x00100000*/
 	
 	kernelStart = .;				/*exports the "kernelstart" symbol so we can use it in our D code*/
 

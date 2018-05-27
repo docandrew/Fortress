@@ -4,16 +4,19 @@ extern(C) __gshared ulong kernelStart;
 extern(C) __gshared ulong kernelEnd;
 extern(C) __gshared ulong stackandpagetables;
 
-__gshared AreaFrameAllocator frameAllocator;
+//__gshared AreaFrameAllocator frameAllocator;
 
+import AssertPanic;
+import Config;
 import screen;
 import util;
 import cpu;
 import cpuio;
 import interrupt;
-import memory;
+import PhysMemory;
 import multiboot;
 import elf;
+import Timer;
 
 extern(C) __gshared void kmain(uint magic, ulong multibootInfoAddress)
 {
@@ -80,52 +83,30 @@ extern(C) __gshared void kmain(uint magic, ulong multibootInfoAddress)
 	//	kprintfln(" command line: %s", cast(char *)multibootInfo.cmdline);
 	//}
 	
-	//Print memory info
-	//frameAllocator = AreaFrameAllocator(multibootInfo);
-	MemoryAreas mem = MemoryAreas(multibootInfo);
-	kprintfln(" memory maps start: %x end: %x", cast(size_t)mem.mmap, cast(size_t)mem.mmap + mem.mmapLength);
-	//foreach(MultibootMemoryMap area; mem)
-	//{
-	//	//kprintfln(" start: %x length: %x type: %d", area.addr, area.length, area.type);
-	//}
+	//Initialize memory management
+	MemoryAreas bootMemMap = MemoryAreas(multibootInfo);
+	kprintfln("Initializing Memory ");
+	kprintfln(" memory maps start: %x end: %x", cast(size_t)bootMemMap.mmap, cast(size_t)bootMemMap.mmap + bootMemMap.mmapLength);
+	physicalMemory.initialize(bootMemMap);
+	kprintfln(" Available Memory: %x", physicalMemory.getUsable());
 
 	//check kernel ELF sections
-	kassert(multibootInfo.flags.isBitSet(5));
-	
-	ELFSectionHeader *elfsec = &multibootInfo.ELFsec;
-	char *stringTable;
-
-	kprintfln(" ELF sections: %d, section size: %d, address: %x, str table idx: %d", elfsec.num, elfsec.size, elfsec.addr, elfsec.shndx);
-		
-	ELF64SectionHeader *sechdr;
-
-	//find section header string table:
-	if(elfsec.num > 0 && elfsec.shndx != SHN_UNDEF)
+	static if(Config.DebugELF)
 	{
-		sechdr = cast(ELF64SectionHeader *)(elfsec.addr + (elfsec.shndx * elfsec.size));	//find string table section
-		stringTable = cast(char *)sechdr.sh_addr;											//find string table itself
+		kprintfln("Checking Kernel ELF Sections");
+		kassert(multibootInfo.flags.isBitSet(5));
+		dumpELF(multibootInfo);
 	}
-
-	//kprintfln(" ELF section %d, type: %d, size: %d, offset: %x", elfsec.shndx, sechdr.sh_type, cast(uint)sechdr.sh_size, cast(uint)sechdr.sh_offset);
-	//kprintfln(" addr of string table: %x: string table: ", cast(ulong)stringTable);
-	//printchars(stringTable + 11, 72);
-
-	//iterate through section headers
-	foreach(i; 0 .. elfsec.num)
-	{
-		sechdr = cast(ELF64SectionHeader *)(elfsec.addr + (i * elfsec.size));
-		kprintfln(" #%d, addr: %x, type: %d, size: %x, name: %s", i, sechdr.sh_addr, sechdr.sh_type, cast(uint)sechdr.sh_size, stringTable + sechdr.sh_name);
-	}
-
-	AreaFrameAllocator frameAllocator = AreaFrameAllocator(mem, kernelStart, kernelEnd, 
-														cast(size_t)multibootInfoAddress, cast(size_t)multibootInfoAddress + multibootInfo.sizeof, 
-														cast(size_t)mem.mmap, cast(size_t)mem.mmap + mem.mmapLength, 
-														cast(size_t)elfsec.addr, cast(size_t)elfsec.addr + (elfsec.num * elfsec.size));
-
-
 
 	setupInterrupts();
+	kprintfln("Initalizing 8253 Timer");
+	Timer.init();
 
+	//Trigger a page fault for testing
+	//int *testFault = cast(int *)0xFFFF_FFFF_FFFF_FF00;
+	//*testFault = 45;
+
+	//TODO: eventually turn this into the idle process.
 	while(true)
 	{
 		//TODO: implement a sleep timer or something

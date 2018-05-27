@@ -31,7 +31,6 @@ public void pageFaultHandler(ulong err)
 	// the address that caused the exception
 	asm
 	{
-		//TODO: fix this compiler bug that thinks CR2 is only 32-bits
 		mov RAX, CR2;
 		mov faultAddress[RBP], RAX;
 	}

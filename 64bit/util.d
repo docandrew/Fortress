@@ -1,4 +1,5 @@
 //utility functions
+//TODO: consider splitting string stuff and bit-fiddling into separate modules
 
 module util;
 
@@ -74,6 +75,7 @@ char[19] longToStringz(ulong r)
 
 // return null-terminated decimal representation of integer
 // sized for ordinary number types (not addresses)
+// TODO: make a version of this that works for longs
 @trusted void itoa(char *buf, int d)
 {
 	int sizeOfString = 1;	//need 1 char for null-terminate

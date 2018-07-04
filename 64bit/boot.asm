@@ -19,7 +19,7 @@ MultiBootHeader:
 	dd CHECKSUM
 
 ; Stack setup (see end for location)
-STACKSIZE equ 0x4096
+STACKSIZE equ 0x16384
 
 section .text
  
@@ -121,6 +121,11 @@ check_long_mode:
 	jmp error
 
 setup_page_tables:
+	; map p4 table recursively
+	mov eax, p4_table
+	or eax, 11b			; present + writable
+	mov [p4_table + 511 * 8], eax
+
 	; map first p4 entry to p3 table
 	mov eax, p3_table
 	or eax, 11b			; present + writable
@@ -173,15 +178,15 @@ enable_paging:
 section .bss
 align 4096
 ;p5_table
-;	resb 4096			;future Intel spec
+;	resb 4096			; future Intel spec (56-bit virtual addresses)
 p4_table:
-	resb 4096
+	resb 4096			; reserve 4096 bytes (512 entries, 64-bits each)
 p3_table:
-	resb 4096
+	resb 4096			; for each page table
 p2_table:
 	resb 4096
-;p1_table:				;not used w/ 2MiB pages
-;	resb 4096
+p1_table:				; not used w/ 2MiB pages
+	resb 4096
 	
 stack:
 	resb STACKSIZE

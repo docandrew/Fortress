@@ -14,15 +14,22 @@ import cpu;
 import cpuio;
 import interrupt;
 import PhysMemory;
+import VirtMemory;
 import multiboot;
 import elf;
 import Timer;
 
-extern(C) __gshared void kmain(uint magic, ulong multibootInfoAddress)
+/**
+ * kmain is the main entry point for the Fortress kernel, called from boot64.asm
+ * Params:
+ *  magic = the magic number (0x2badb002) passed by a multiboot-compliant loader
+ *  multibootInfoAddress = pointer to multiboot info structure (see multiboot specification)
+ */
+extern(C) __gshared void kmain(uint magic, MultibootInfoStruct *multibootInfoAddress)
 {
 	char[13] cpuidBuffer;
 	int cpuidMaxLevel;
-	MultibootInfoStruct multibootInfo = * cast(MultibootInfoStruct *)multibootInfoAddress; //get copy
+	MultibootInfoStruct multibootInfo = *multibootInfoAddress; 		//get copy (could use original?)
 
 	clearScreen();
 
@@ -32,8 +39,6 @@ extern(C) __gshared void kmain(uint magic, ulong multibootInfoAddress)
 	kassert(magic == 0x2badb002);		//ensure this was loaded by a multiboot-compliant loader
 
 	kprintfln("Multiboot Struct at: %x, end: %x", cast(size_t)multibootInfoAddress, cast(size_t)multibootInfoAddress + multibootInfo.sizeof);
-
-	//TODO: check for this first before making copy of data at multibootInfoAddress
 
 	print("Kernel area: ");
 	print(cast(ulong)&kernelStart);
@@ -76,19 +81,19 @@ extern(C) __gshared void kmain(uint magic, ulong multibootInfoAddress)
 	}
 
 	//TODO: check modules
-	//if(multibootInfo.flags.isBitSet(2))
-	//{
-	//	//print(" command line: ");
-	//	//printlnz(cast(char *)multibootInfo.cmdline);
-	//	kprintfln(" command line: %s", cast(char *)multibootInfo.cmdline);
-	//}
+	// if(multibootInfo.flags.isBitSet(2))
+	// {
+	// 	//print(" command line: ");
+	// 	//printlnz(cast(char *)multibootInfo.cmdline);
+	// 	kprintfln(" command line: %s", cast(char *)multibootInfo.cmdline);
+	// }
 	
 	//Initialize memory management
-	MemoryAreas bootMemMap = MemoryAreas(multibootInfo);
 	kprintfln("Initializing Memory ");
-	kprintfln(" memory maps start: %x end: %x", cast(size_t)bootMemMap.mmap, cast(size_t)bootMemMap.mmap + bootMemMap.mmapLength);
-	physicalMemory.initialize(bootMemMap);
-	kprintfln(" Available Memory: %x", physicalMemory.getUsable());
+	MemoryAreas bootMemMap = MemoryAreas(multibootInfo);
+	//kprintfln(" memory maps start: %x end: %x", cast(size_t)bootMemMap.mmap, cast(size_t)bootMemMap.mmap + bootMemMap.mmapLength);
+	physicalMemory = PhysicalMemory(&bootMemMap, cast(size_t)&kernelStart, cast(size_t)&kernelEnd);
+	kprintfln(" Available Memory: %d GB", cast(uint)(physicalMemory.getUsable() / 1_000_000_000));
 
 	//check kernel ELF sections
 	static if(Config.DebugELF)
@@ -98,7 +103,27 @@ extern(C) __gshared void kmain(uint magic, ulong multibootInfoAddress)
 		dumpELF(multibootInfo);
 	}
 
-	setupInterrupts();
+	//Allocate a few frames
+	// for(int i = 0; i < 10; i++)
+	// {
+	// 	physicalMemory.allocateFrame();
+	// }
+	setupInterrupts();	//needed to handle page faults
+
+	//test VM subsystem
+	// size_t addr = 0x0000_0000A_8000_0000; //42 * 512 * 512 * 4096;
+	// size_t freshFrame = physicalMemory.allocateFrame();
+	// kprintfln("addr: %x, phys: %x map to: %x", addr, virtualToPhysical(addr), freshFrame);
+	// mapPage(freshFrame, addr, PAGEFLAGS.present);
+	// kprintfln("phys: %x", virtualToPhysical(addr));
+	// kprintfln("next free frame: %x", physicalMemory.allocateFrame());
+
+	// //unmap page
+	// kprintfln("contents? (mapped): %x", *cast(ulong*)addr);
+	// unmap(addr);
+	// kprintfln("phys after unmap: %x", virtualToPhysical(addr));
+	// kprintfln("contents? (unmapped): %x", *cast(ulong*)addr);
+
 	kprintfln("Initalizing 8253 Timer");
 	Timer.init();
 

@@ -1,142 +1,218 @@
 module PhysMemory;
 
+/**
+ * PhysMemory is an abstraction of the physical memory present in the 
+ * system. Fortress uses the term "Frame" to refer to a page of memory
+ * with a physical address.
+ *
+ *
+ */
+
+import Config;
 import multiboot;
 import util;
 //import List;
 import screen;  //for testing
 import AssertPanic;
 
-//public alias size_t Frame;
-
 //TODO: put these in Config.d
-public enum PAGE_SIZE = 2097152;
-public enum FRAME_SIZE = 2097152;				//2^21
-public enum FRAME_SHIFT = 21;				//left or right shift to convert between page num and start address
+public enum FRAME_SIZE = 4096;				//2^12
+public enum FRAME_SHIFT = 12;				//left or right shift to convert between page num and start address
 
-public enum MAX_PHYSICAL_FRAMES = 65536;
-
-public enum FrameStatus
-{
-	UNUSABLE, FREE, ALLOCATED
-}
-
+/**
+ * physicalMemory is the only allowable instance
+ */
 public __gshared PhysicalMemory physicalMemory;
 
 /**
- * Round up to next page size
- *
+ * Round up to next frame/page boundary. If address
+ * is already on this boundary, it is returned.
  */
-size_t roundUp(size_t address, size_t multiple = FRAME_SIZE)
+size_t roundUp(size_t address)
 {
-	if(multiple == 0){
+	if(address % FRAME_SIZE == 0)
+	{
 		return address;
 	}
-
-	ulong remainder = address % multiple;
-	if(remainder == 0){
-		return address;
+	else
+	{
+		return (address & ~(FRAME_SIZE-1)) + FRAME_SIZE;
 	}
+	// if(multiple == 0){
+	// 	return address;
+	// }
 
-	return address + multiple - remainder;
+	// ulong remainder = address % multiple;
+	// if(remainder == 0){
+	// 	return address;
+	// }
+
+	// return address + multiple - remainder;
 }
 
 /**
- * Frame or page of physical memory
- * TODO: add flags
+ * Round down to previous frame/page boundary. If address
+ * is already on this boundary, it is returned.
  */
-struct Frame
+size_t roundDown(size_t address)
 {
-	ubyte flags;
+	//return roundUp(address, multiple) - multiple;
+	return (address & ~(FRAME_SIZE-1));
+}
 
-	static size_t frameNumber(size_t address)
-	{
-		return address >> FRAME_SHIFT;
-	}
+/**
+ * Frame number containing this address
+ */
+public size_t frameNumber(size_t address)
+{
+	return address >> FRAME_SHIFT;
+}
 
-	static size_t startAddress(size_t frameNum)
-	{
+/**
+ * Start address of this frame number
+ */
+public size_t startAddress(size_t frameNum)
+{
 		return frameNum << FRAME_SHIFT;
-	}
 }
 
 struct PhysicalMemory
 {
-	/**
-	 * We keep an array of frame nodes for underlying storage
-	 * These are linked into the unusedFrameNodes list.
-	 * As we find free physical frames, we link those into the
-	 * freeFrames list. When we allocate a physical frame, we
-	 * unlink it from freeFrames and link it into the usedFrames
-	 * list.
-	 */
-	Frame[MAX_PHYSICAL_FRAMES] frames;
-	size_t usableFrames;
+	//TODO: make these private
+	//Frame[MAX_PHYSICAL_FRAMES] frames;
+	size_t nextFreeFrame;			//address of next Frame to allocate
+	size_t numUsableFrames;			//number of physical frames in memory
+	size_t lastAllocatedFrame;		//address of last frame we allocated
+	size_t lastUsableFrame;			//address of last usable frame in system
 
+	size_t areaStart;				//frame-aligned address of start of the current area
+	size_t areaEnd;					//frame-aligned address of end of the current area
+
+	size_t kernelStart;					//kernel location in memory, can't allocate here
+	size_t kernelEnd;
+	MemoryAreas *multibootMemoryMap;
+	
 	size_t getUsable()
 	{
-		return usableFrames * PAGE_SIZE;
+		return numUsableFrames * FRAME_SIZE;
 	}
 
-	//TODO: make a version that accepts a UEFI map.
-	void initialize(ref MemoryAreas multibootMemoryMap)
+	/**
+	 * Constructor for Physical Memory struct - 
+	 * Params:
+	 *  multibootMemoryMap = see multiboot 
+	 * TODO: Make a version that accepts a UEFI map.
+	 */
+	this(MemoryAreas *myMultibootMemoryMap, size_t myKernelStart, size_t myKernelEnd)
 	{ 
-		//make all frames unavailable to start
-		foreach(i; 0..MAX_PHYSICAL_FRAMES)
-		{
-			frames[i].flags = FrameStatus.UNUSABLE;
-		}
-		//kprintfln("flags: %d", frames[0].flags);
+		bool setupFirstArea = true;
+		kernelStart = myKernelStart;
+		kernelEnd = myKernelEnd;
 		
-		foreach(MultibootMemoryMap area; multibootMemoryMap)
+		multibootMemoryMap = myMultibootMemoryMap;
+		//kprintf(" Kstart: %x, Kend: %x", kernelStart, kernelEnd);
+		
+		foreach(MultibootMemoryMap area; *multibootMemoryMap)
 		{
-			kprintf(" start: %x length: %x type: %d", area.addr, area.length, area.type);
-			uint framesInThisArea = 0;
+			kprintf(" Memory: %x-%x %S", area.addr, area.addr + area.length - 1, MULTIBOOT_MEM_TYPES[area.type]);
+			uint framesInThisArea;
 
-			if(area.type == 1 && area.length >= PAGE_SIZE)
+			//determine usable memory frames
+			if(area.type == multiboot.MEM_TYPES.AVAILABLE && area.length >= FRAME_SIZE)
 			{
-				//Need to align by page size
-				size_t start = area.addr;
-				size_t end = area.addr + area.length;
+				size_t alignedStart = roundUp(area.addr);
+				size_t alignedEnd = roundDown(area.addr + area.length);		//TODO: might need to subtract one here. Bug?
+				size_t trueLength = alignedEnd - alignedStart;
+				framesInThisArea = cast(uint)(trueLength / FRAME_SIZE);
 
-				size_t pageStart = roundUp(area.addr);
-				size_t pageEnd = pageStart + PAGE_SIZE;
-
-				do
+				//if we haven't set up the first memory area yet, do so now.
+				if(setupFirstArea)
 				{
-					size_t containingFrame = Frame.frameNumber(pageStart);
-					//kprintf(" %x ", containingFrame);
-					frames[containingFrame].flags = 1;
-					framesInThisArea++;
-					pageStart += PAGE_SIZE;
-					pageEnd += PAGE_SIZE;
-				}while(pageEnd < end);
-
-				usableFrames += framesInThisArea;
+					nextFreeFrame = alignedStart;
+					areaStart = alignedStart;
+					areaEnd = alignedEnd;
+					setupFirstArea = false;
+				}
+				
+				lastUsableFrame = alignedEnd;								//update this as we iterate through memory areas
+				numUsableFrames += framesInThisArea;
+				kprintf(" frames: %d", framesInThisArea);
 			}
-
-			kprintfln(" frames: %d", framesInThisArea);
-		}	
+			kprintfln("");
+		}
+		//multibootMemoryMap.reset();
 	}
 
-	//Return start address of free frame
+	/**
+	 * allocateFrame returns the address of a free physical frame in memory
+	 * 
+	 * Implemented using a moving frame pointer
+	 */
 	size_t allocateFrame()
 	{
-		//This sucks - need to keep a list for quicker access
-		foreach(i; 0..MAX_PHYSICAL_FRAMES)
+		if(nextFreeFrame >= areaEnd)
 		{
-			if(frames[i].flags == FrameStatus.FREE)
+			nextFreeFrame = updateFreeArea();
+		}
+
+		//Don't allocate in the middle of our kernel!
+		if(nextFreeFrame >= kernelStart && nextFreeFrame <= kernelEnd)
+		{
+			kprintfln("Attempted allocation in kernel, skipping");
+			nextFreeFrame = roundUp(kernelEnd);
+
+			//since we advanced it to the end of the kernel, need to make
+			// sure we are still in a good memory area
+			if(nextFreeFrame >= areaEnd)
 			{
-				frames[i].flags = FrameStatus.ALLOCATED;
-				return Frame.startAddress(i);
+				nextFreeFrame = updateFreeArea();
 			}
 		}
+	
+		static if(Config.DebugFrameAlloc)
+		{
+			kprintfln("Alloc Frame: %x", nextFreeFrame);
+		}
+
+		size_t retFrame = nextFreeFrame;
+		lastAllocatedFrame = retFrame;
+		nextFreeFrame += FRAME_SIZE;
+		return retFrame;
+	}
+
+	/**
+	 * updateFreeArea returns a frame-aligned address of the next 
+	 * area of free memory as indicated by the Multiboot memory map
+	 */
+	size_t updateFreeArea()
+	{
+		//find next area of available memory 
+		multibootMemoryMap.reset();
+		foreach(MultibootMemoryMap area; *multibootMemoryMap)
+		{
+			if(area.addr > nextFreeFrame && area.type == multiboot.MEM_TYPES.AVAILABLE && area.length >= FRAME_SIZE)
+			{
+				areaStart = roundUp(area.addr);
+				areaEnd = roundDown(area.addr + area.length);
+				
+				static if(Config.DebugFrameAlloc)
+				{
+					kprintfln(" Allocator advanced to area: %x", areaStart);
+				}
+				
+				return areaStart;
+			}
+		}
+
 		panic("Out of Memory");
-		return 0;
+		return 0;					//never reached
 	}
 
 	//Return frame to free list
-	void freeFrame(size_t address)
+	void freeFrame(size_t physicalAddress)
 	{
-		frames[Frame.frameNumber(address)].flags = FrameStatus.FREE;
+		kprintfln(" freeFrame %x", physicalAddress);
+		// frames[Frame.frameNumber(address)].flags = FrameStatus.FREE;
+		// lastAllocatedFrame = Frame.frameNumber(address);
 	}
 }

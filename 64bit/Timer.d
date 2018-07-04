@@ -4,6 +4,7 @@
  */
 module Timer;
 
+import Config;
 import screen;
 import cpuio;
 
@@ -39,8 +40,11 @@ void clockHandler()
 		counter = 0;
 	}
 
-	if(counter % 1000 == 0)
+	static if(Config.DebugTimer)
 	{
-		kprintf(".");
+		if(counter % 1000 == 0)
+		{
+			kprintf(".");
+		}
 	}
 }

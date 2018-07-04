@@ -26,7 +26,7 @@ run-raw:
 	qemu-system-x86_64 -kernel my_kernel
 
 run:
-	qemu-system-x86_64 -m 5G -cdrom my_kernel.iso
+	qemu-system-x86_64 -m 4G -cdrom my_kernel.iso
 
 iso:
 	cp my_kernel isodir/boot/

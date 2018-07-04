@@ -2,8 +2,10 @@ BITS 64
 
 section .text
 global getCpuVendor
+global invalidatePage
 global getDebug
 
+; TODO: rename this file, since it contains more than just CPUID
 ; int getCpuVendor(char * buf)
 getCpuVendor:
 	; save registers
@@ -26,6 +28,17 @@ getCpuVendor:
 	ret 	;return from func
 
 ; TODO: combine w/ getCpuFeatures function, load data into some sort of struct
+
+invalidatePage:
+	; save registers
+	push rbp
+	mov rbp, rsp
+	sub rsp, 0x10
+
+	invlpg [rdi]	;invalidate page
+
+	leave
+	ret			;return from func		
 
 ; TODO: convert to 64-bit calling convention
 ;getDebug:

@@ -30,6 +30,17 @@ import util;
 //enum MultibootVideoMode		= 0x00000004;		//must pass video info to OS
 //enum MultibootAoutKludge	= 0x00010000;		//indicates use of address fields in the header
 
+public enum MEM_TYPES
+{
+	UNKNOWN = 0,
+	AVAILABLE = 1,
+	UNUSABLE = 2,
+	ACPI = 3,
+	RESERVED = 4,
+	DEFECTIVE = 5
+}
+public __gshared string[6] MULTIBOOT_MEM_TYPES = ["?", "available", "unusable", "ACPI info", "reserved", "defective"];
+
 //Flags set in 'flags' member of MultibootInfoDef
 enum MultibootInfoFlags : uint
 {
@@ -156,7 +167,7 @@ struct APMTable
 /**
  * Using memory map from GRUB or other Multiboot loader, 
  * this provides an iterator over the usable physical 
-  * memory areas. 
+ * memory areas. 
  */
 struct MemoryAreas
 {
@@ -198,5 +209,10 @@ struct MemoryAreas
 		//reset to beginning in case next person wants to iterate over list.
 		currentArea = mmap;	
 		return true;
+	}
+
+	void reset()
+	{
+		currentArea = mmap;
 	}
 }

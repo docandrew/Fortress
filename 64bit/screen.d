@@ -139,20 +139,29 @@ void kprintf(T...)(immutable string format, T args)
 							itoa(intbuffer.ptr, arg);
 							printz(intbuffer.ptr);
 						}
+
 						break;
 					}
 					case 's':
 					{
-						static if(is(typeof(arg) : char*)){			//make sure no type mismatch between 
+						static if(is(typeof(arg) == char*)){
 							printz(arg);
 						}
+						// else
+						// {
+						// 	static assert(0, "Wrong argument type to format specifier. Expected char* for %s");
+						// }
 						break;
 					}
 					case 'S':
 					{
-						static if(is(typeof(arg) : string)){
+						static if(is(typeof(arg) == string)){
 							print(arg);
 						}
+						// else
+						// {
+						// 	static assert(0, "Wrong argument type to format specifier. Expected string for %s");
+						// }
 						break;
 					}
 					case 'x':
@@ -161,6 +170,7 @@ void kprintf(T...)(immutable string format, T args)
 						static if(is(typeof(arg) : long)){
 							print(arg);
 						}
+
 						break;
 					}
 					case 'c':
@@ -170,6 +180,7 @@ void kprintf(T...)(immutable string format, T args)
 							print(arg);
 						}
 
+						break;
 					}
 					default:
 					{

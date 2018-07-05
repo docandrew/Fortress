@@ -1,6 +1,6 @@
 module multiboot;
 
-import AssertPanic;
+import assertpanic;
 import util;
 
 //Multiboot Boot information struct (defined here for ELF)
@@ -44,21 +44,22 @@ public __gshared string[6] MULTIBOOT_MEM_TYPES = ["?", "available", "unusable", 
 //Flags set in 'flags' member of MultibootInfoDef
 enum MultibootInfoFlags : uint
 {
-	Memory				= 0x00000001,		//is there basic upper/lower memory info?
-	BootDevice			= 0x00000002,		//is there a boot device set?
-	CmdLine				= 0x00000004,		//is a command line defined?
-	Modules				= 0x00000008,		//are there modules available?
+	Memory				= 1 << 0,		//is there basic upper/lower memory info?
+	BootDevice			= 1 << 1,		//is there a boot device set?
+	CmdLine				= 1 << 2,		//is a command line defined?
+	Modules				= 1 << 3,		//are there modules available?
 
 	//next two flags are mutually exclusive
-	AoutSyms			= 0x00000010,		//is there a symbol table loaded?
-	ELFSectionHeader	= 0x00000020,		//is there an ELF section header?
+	AoutSyms			= 1 << 4,		//is there a symbol table loaded?
+	ELFSectionHeader	= 1 << 5,		//is there an ELF section header?
 
-	MemoryMap			= 0x00000040,		//is there a full memory map?
-	DriveTable			= 0x00000080,		//is there drive info?
-	ConfigTable			= 0x00000100,		//is there a config table?
-	BootLoaderName		= 0x00000200,		//is there a boot loader name?
-	APMTable 			= 0x00000400,		//is there an APM table?
-	VideoInfo			= 0x00000800		//is there video info?
+	MemoryMap			= 1 << 6,		//is there a full memory map?
+	DriveTable			= 1 << 7,		//is there drive info?
+	ConfigTable			= 1 << 8,		//is there a config table?
+	BootLoaderName		= 1 << 9,		//is there a boot loader name?
+	APMTable 			= 1 << 10,		//is there an APM table?
+	VideoInfo			= 1 << 11,		//is there VBE info?
+	FrameBufferInfo		= 1 << 12		//is there FrameBuffer info?
 }
 
 

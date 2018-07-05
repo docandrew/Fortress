@@ -1,6 +1,7 @@
 module screen;
 
 import util;
+import config;
 
 __gshared ubyte* videoMemory = cast(ubyte *)0xb8000;
 __gshared uint index;
@@ -36,6 +37,7 @@ uint getColumn()
 
 //TODO: Implement some decent string handling and get rid of all this silliness
 //TODO: make the screen display portion of a larger text buffer
+//TODO: Wrap this up in a struct?
 @system void scrollUp(uint lines = 1)
 {
 	foreach(idx; 0 .. 80 * 25 * 2)
@@ -73,6 +75,13 @@ uint getColumn()
 // Output single character to video memory buffer and move cursor
 @trusted void print(char val, ubyte color = 0b111)
 {
+	static if(config.SerialConsoleMirror)
+	{
+		import serial : COM1, SerialPort;
+
+		COM1.write(val);
+	}
+
 	if(val == '\n' || val == '\r')
 	{
 		index = (getLine() * 160) + 160;

@@ -6,18 +6,19 @@ extern(C) __gshared ulong stackandpagetables;
 
 //__gshared AreaFrameAllocator frameAllocator;
 
-import AssertPanic;
-import Config;
+import assertpanic;
+import config;
 import screen;
 import util;
 import cpu;
 import cpuio;
 import interrupt;
-import PhysMemory;
-import VirtMemory;
+import physmemory;
+import virtmemory;
 import multiboot;
 import elf;
-import Timer;
+import serial;
+import timer;
 
 /**
  * kmain is the main entry point for the Fortress kernel, called from boot64.asm
@@ -30,13 +31,18 @@ extern(C) __gshared void kmain(uint magic, MultibootInfoStruct *multibootInfoAdd
 	char[13] cpuidBuffer;
 	int cpuidMaxLevel;
 	MultibootInfoStruct multibootInfo = *multibootInfoAddress; 		//get copy (could use original?)
-
-	clearScreen();
-
-	println("Fortress 64-bit Operating System v0.0.2 BETA\n", 0b00010010);
-	
 	//kprintfln("Multiboot?: %x", magic);
 	kassert(magic == 0x2badb002);		//ensure this was loaded by a multiboot-compliant loader
+
+	clearScreen();
+	
+	static if(config.SerialConsoleMirror)
+	{
+		COM1.setConfig();
+		//COM1.write("test config");
+	}
+
+	println("Fortress 64-bit Operating System v0.0.2 BETA\n", 0b00010010);
 
 	kprintfln("Multiboot Struct at: %x, end: %x", cast(size_t)multibootInfoAddress, cast(size_t)multibootInfoAddress + multibootInfo.sizeof);
 
@@ -96,7 +102,7 @@ extern(C) __gshared void kmain(uint magic, MultibootInfoStruct *multibootInfoAdd
 	kprintfln(" Available Memory: %d GB", cast(uint)(physicalMemory.getUsable() / 1_000_000_000));
 
 	//check kernel ELF sections
-	static if(Config.DebugELF)
+	static if(config.DebugELF)
 	{
 		kprintfln("Checking Kernel ELF Sections");
 		kassert(multibootInfo.flags.isBitSet(5));
@@ -125,7 +131,7 @@ extern(C) __gshared void kmain(uint magic, MultibootInfoStruct *multibootInfoAdd
 	// kprintfln("contents? (unmapped): %x", *cast(ulong*)addr);
 
 	kprintfln("Initalizing 8253 Timer");
-	Timer.init();
+	timer.init();
 
 	//Trigger a page fault for testing
 	//int *testFault = cast(int *)0xFFFF_FFFF_FFFF_FF00;

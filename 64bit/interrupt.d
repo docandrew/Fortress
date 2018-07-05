@@ -4,11 +4,11 @@ module interrupt;
 //TODO: implement APIC, xAPIC and x2APIC
 
 import cpuio;
-import AssertPanic;
+import assertpanic;
 import screen;
-import VirtMemory;
+import virtmemory;
 import keyboard;
-import Timer;
+import timer;
 
 enum EXCEPTION
 {
@@ -280,7 +280,7 @@ public extern(C) __gshared void isr(ulong num, ulong err)
 			panic("GPF");
 			break;
 		case EXCEPTION.PAGE_FAULT:
-			VirtMemory.pageFaultHandler(err);
+			virtmemory.pageFaultHandler(err);
 			break;
 		default:
 			panic("Unhandled Interrupt");
@@ -299,7 +299,7 @@ public extern(C) __gshared void irq(ulong num, ulong err)
 
 	switch(irq){
 		case IRQ.TIMER:
-			Timer.clockHandler();
+			timer.clockHandler();
 			break;
 		case IRQ.KEYBOARD:
 			//ubyte scanCode = inPort!(ubyte)(0x60);

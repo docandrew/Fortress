@@ -3,7 +3,7 @@ module screen;
 import util;
 import config;
 
-__gshared ubyte* videoMemory = cast(ubyte *)0xb8000;
+__gshared ubyte* videoMemory = cast(ubyte *)0xFFFF_8000_000B_8000;
 __gshared uint index;
 
 void moveCursor(uint x, uint y)

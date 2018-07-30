@@ -1,9 +1,15 @@
 all:
-	yasm --arch=x86 -f elf64 boot.asm -o build/boot.o	
-	yasm --arch=x86 -f elf64 boot64.asm -o build/boot64.o
-	yasm --arch=x86 -f elf64 cpuid.asm -o build/cpuid.o
-	yasm --arch=x86 -f elf64 isr.asm -o build/isr.o
-	dmd -betterC -v -c -g -m64 -od=./build assertpanic.d main.d cpu.d cpuio.d elf.d util.d interrupt.d keyboard.d multiboot.d process.d physmemory.d virtmemory.d screen.d serial.d timer.d -noboundscheck -release
+	yasm --arch=x86 -f elf64 -g dwarf2 boot.asm -o build/boot.o
+	yasm --arch=x86 -f elf64 -g dwarf2 trampoline.asm -o build/trampoline.o
+	yasm --arch=x86 -f elf64 -g dwarf2 boot64.asm -o build/boot64.o
+	yasm --arch=x86 -f elf64 -g dwarf2 cpuid.asm -o build/cpuid.o
+	yasm --arch=x86 -f elf64 -g dwarf2 isr.asm -o build/isr.o
+
+#   DMD invocation:
+#   -vtls included as a precaution against forgetting __gshared on globals. TLS will break the kernel!
+#   -g for debugging info. May break things.
+#
+	dmd -betterC -map -vtls -v -c -m64 -od=./build alloc.d assertpanic.d main.d cpu.d cpuio.d elf.d util.d interrupt.d keyboard.d multiboot.d process.d physmemory.d virtmemory.d screen.d serial.d timer.d -boundscheck=off -release
 #	gcc -m64 -omy_kernel cpuid.o cpu.o util.o multiboot.o screen.o main.o boot.o -T linker.ld -nostdlib
 #	
 #	strip out D runtime & typeinfo stuff until -betterC does it
@@ -27,7 +33,9 @@ run-raw:
 	qemu-system-x86_64 -kernel my_kernel
 
 run:
-	qemu-system-x86_64 -s -m 4G -cdrom my_kernel.iso -serial stdio
+# add -S to pause simulation at startup to allow debugger connection
+# add -d int,cpu_reset,guest_errors for exception debugging
+	qemu-system-x86_64 -d int,cpu_reset,guest_errors -s -m 4G -cdrom my_kernel.iso -monitor stdio
 
 iso:
 	cp my_kernel isodir/boot/

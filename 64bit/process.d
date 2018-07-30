@@ -1,5 +1,7 @@
 module process;
 
+import virtmemory;
+
 enum Status
 {
     RUNNING,
@@ -27,7 +29,7 @@ struct Process
     
     size_t stack;
 
-    ubyte[12288] pageTables;
+    AddressSpace *addressSpace;
 
     //return PID of created process
 	uint create()

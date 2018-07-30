@@ -3,6 +3,98 @@
 
 module util;
 
+import config;
+
+import std.traits;
+
+/**
+ * isPowerOfTwo
+ *
+ * Returns: true if a = 2^X, false otherwise.
+ */
+bool isPowerOfTwo(size_t a)
+{
+	size_t ret;
+
+	asm
+	{
+		popcnt RAX, a;
+		mov ret, RAX;
+	}
+
+	return (ret == 1);
+}
+
+/**
+ * addSaturate is a saturated addition function
+ *
+ * Params:
+ *  a = must be unsigned
+ *  b = must be unsigned
+ *
+ * Returns: a + b if no overflow, T.max otherwise.
+ *
+ * TODO: add some unittests here, not 100% sure about
+ * implicit conversions goofing this up.
+ */
+ pure @safe T addSaturate(T)(T a, T b)
+ {
+	 static assert(isUnsigned!T);
+
+	 T c = cast(T)(a + b);
+	 if(c < a)
+	 {
+		 c = T.max;
+	 }
+	 return c;
+ }
+
+/**
+ * Round up to next frame/page/align boundary. If address
+ * is already on this boundary, it is returned.
+ *
+ * Params:
+ *  multiple = must be a power of 2. By default this is FRAME_SIZE
+ */
+pure @safe size_t roundUp(size_t address, size_t multiple = FRAME_SIZE)
+{
+	//TODO: consider checking if multiple is a power of 2
+	// perhaps force it to be immutable so we can check at compile time.
+	//kassert(multiple.isPowerOfTwo);
+
+	if(address % multiple == 0)
+	{
+		return address;
+	}
+	else
+	{
+		return (address & ~(multiple-1)) + multiple;
+	}
+	// if(multiple == 0){
+	// 	return address;
+	// }
+
+	// ulong remainder = address % multiple;
+	// if(remainder == 0){
+	// 	return address;
+	// }
+
+	// return address + multiple - remainder;
+}
+
+/**
+ * Round down to previous frame/page/align boundary. If address
+ * is already on this boundary, it is returned.
+ *
+ * Params:
+ *  multiple = must be a power of 2. By default this is FRAME_SIZE
+ */
+pure @safe size_t roundDown(size_t address, size_t multiple = FRAME_SIZE)
+{
+	//return roundUp(address, multiple) - multiple;
+	return (address & ~(multiple-1));
+}
+
 pure nothrow @nogc bool isBitSet(T)(T value, uint index)
 {
 	if(((1 << index) & value) != 0)

@@ -1,5 +1,6 @@
 module multiboot;
 
+import elf;
 import assertpanic;
 import util;
 
@@ -107,17 +108,6 @@ struct KernelModule
 	uint mod_end;			// 4 end address of kernel module
 	uint string;			// 8 pointer to null-term string description of kernel module
 	uint reserved;			//12 expected value = 0
-}
-
-//Section header table for ELF
-struct ELFSectionHeader
-{
-	align(1):					//packed
-							//BYTE
-	uint num;				// 0 number of entries
-	uint size;				// 4 size of each entry
-	uint addr;				// 8 address of entry
-	uint shndx;				//12 string table used as index of names
 }
 
 //Memory-map given by BIOS to Multiboot

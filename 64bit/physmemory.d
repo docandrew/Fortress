@@ -15,50 +15,10 @@ import util;
 import screen;  //for testing
 import assertpanic;
 
-//TODO: put these in Config.d
-public enum FRAME_SIZE = 4096;				//2^12
-public enum FRAME_SHIFT = 12;				//left or right shift to convert between page num and start address
-
 /**
  * physicalMemory is the only allowable instance
  */
 public __gshared PhysicalMemory physicalMemory;
-
-/**
- * Round up to next frame/page boundary. If address
- * is already on this boundary, it is returned.
- */
-size_t roundUp(size_t address)
-{
-	if(address % FRAME_SIZE == 0)
-	{
-		return address;
-	}
-	else
-	{
-		return (address & ~(FRAME_SIZE-1)) + FRAME_SIZE;
-	}
-	// if(multiple == 0){
-	// 	return address;
-	// }
-
-	// ulong remainder = address % multiple;
-	// if(remainder == 0){
-	// 	return address;
-	// }
-
-	// return address + multiple - remainder;
-}
-
-/**
- * Round down to previous frame/page boundary. If address
- * is already on this boundary, it is returned.
- */
-size_t roundDown(size_t address)
-{
-	//return roundUp(address, multiple) - multiple;
-	return (address & ~(FRAME_SIZE-1));
-}
 
 /**
  * Frame number containing this address
@@ -76,7 +36,12 @@ public size_t startAddress(size_t frameNum)
 		return frameNum << FRAME_SHIFT;
 }
 
-struct PhysicalMemory
+/**
+ * PhysicalMemory should be instantiated only once. It manages
+ * the available memory in the system for use by Fortress/user
+ * code.
+ */
+public struct PhysicalMemory
 {
 	//TODO: make these private
 	//Frame[MAX_PHYSICAL_FRAMES] frames;
@@ -144,12 +109,19 @@ struct PhysicalMemory
 	}
 
 	/**
-	 * allocateFrame returns the address of a free physical frame in memory
+	 * allocate returns the address of a free physical frame in memory
 	 * 
 	 * Implemented using a moving frame pointer
 	 */
 	size_t allocateFrame()
 	{
+		//skip physical address 0, since physical and virtual address 0
+		// mean "null" or unused in the virtual memory module
+		if(nextFreeFrame == 0)
+		{
+			nextFreeFrame += FRAME_SIZE;
+		}
+
 		if(nextFreeFrame >= areaEnd)
 		{
 			nextFreeFrame = updateFreeArea();
@@ -208,7 +180,10 @@ struct PhysicalMemory
 		return 0;					//never reached
 	}
 
-	//Return frame to free list
+	/**
+	 * free returns a frame to the free list
+	 * not implemented currently, just leaks memory
+	 */
 	void freeFrame(size_t physicalAddress)
 	{
 		kprintfln(" freeFrame %x", physicalAddress);

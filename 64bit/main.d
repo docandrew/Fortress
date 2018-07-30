@@ -1,8 +1,15 @@
 extern(C) __gshared int getCpuVendor(char* buf);
 extern(C) __gshared int getDebug(uint* buf);
-extern(C) __gshared ulong kernelStart;
-extern(C) __gshared ulong kernelEnd;
-extern(C) __gshared ulong stackandpagetables;
+
+extern(C) __gshared ulong KERNEL_START_VIRT;		//from linker.ld
+extern(C) __gshared ulong KERNEL_END_VIRT;			//from linker.ld
+
+enum KERNEL_VIRT = 0xFFFF_8000_0000_0000;			//start of higher-half
+
+__gshared size_t kernelStartVirt;
+__gshared size_t kernelEndVirt;
+__gshared size_t kernelStartPhys;
+__gshared size_t kernelEndPhys;
 
 //__gshared AreaFrameAllocator frameAllocator;
 
@@ -30,7 +37,7 @@ extern(C) __gshared void kmain(uint magic, MultibootInfoStruct *multibootInfoAdd
 {
 	char[13] cpuidBuffer;
 	int cpuidMaxLevel;
-	MultibootInfoStruct multibootInfo = *multibootInfoAddress; 		//get copy (could use original?)
+	MultibootInfoStruct multibootInfo = *multibootInfoAddress; 		//get copy (TODO: unmap original)
 	//kprintfln("Multiboot?: %x", magic);
 	kassert(magic == 0x2badb002);		//ensure this was loaded by a multiboot-compliant loader
 
@@ -39,33 +46,29 @@ extern(C) __gshared void kmain(uint magic, MultibootInfoStruct *multibootInfoAdd
 	static if(config.SerialConsoleMirror)
 	{
 		COM1.setConfig();
-		//COM1.write("test config");
 	}
 
 	println("Fortress 64-bit Operating System v0.0.2 BETA\n", 0b00010010);
 
 	kprintfln("Multiboot Struct at: %x, end: %x", cast(size_t)multibootInfoAddress, cast(size_t)multibootInfoAddress + multibootInfo.sizeof);
 
-	print("Kernel area: ");
-	print(cast(ulong)&kernelStart);
-	print(" - ");
-	println(cast(ulong)&kernelEnd);
-	println("Detecting System Capabilities...");
-
-	print("Stack and Page Tables: ");
-	println(cast(ulong)&stackandpagetables);
+	kernelStartVirt = cast(size_t)&KERNEL_START_VIRT;
+	kernelEndVirt = cast(size_t)&KERNEL_END_VIRT;
+	kernelStartPhys = kernelStartVirt - KERNEL_VIRT;
+	kernelEndPhys = kernelEndVirt - KERNEL_VIRT;
+	kprintfln("Virtual kernel area: %x - %x", kernelStartVirt, kernelEndVirt);
+	kprintfln("Physical kernel area: %x - %x", kernelStartPhys, kernelEndPhys);
+	kprintfln("Detecting System Capabilities...");
+	//kprintfln("Stack and Page Tables: %x", cast(size_t)&stackandpagetables);
 
 	//TODO: make getCpuVendor use 64-bit calling conventions
 	cpuidMaxLevel = getCpuVendor(cast(char *)cpuidBuffer);
-	print("CPU Vendor: ");
+	kprintf("CPU Vendor: ");
 	printz(cast(char *)cpuidBuffer, 0b010);
 	kprintfln(" Max CPUID level: %d", cpuidMaxLevel);
 
 	//printSupportedExtensions(cpuidMaxLevel);
-	//printDebugInfo();
 	println("Multiboot Info: ");
-	//print(" flags: ");
-	//println(multibootInfo.flags);
 
 	//check memory. per multiboot manual: "Lower memory starts at address 0, and upper memory starts at 
 	//address 1 megabyte. The maximum possible value for lower memory is 640 kilobytes. The value returned 
@@ -75,15 +78,11 @@ extern(C) __gshared void kmain(uint magic, MultibootInfoStruct *multibootInfoAdd
 	{
 		print(" lower mem: "); print(multibootInfo.mem_lower); print(" kb, upper mem: "); print(multibootInfo.mem_upper); println(" kb");
 	}
+
 	//identify boot device
 	if(multibootInfo.flags.isBitSet(1))
 	{
 		kprintfln(" boot device: %x", multibootInfo.boot_device);
-		//foreach(int i; 0 .. 4)
-		//{
-		//	print(cast(uint)multibootInfo.boot_device[i]);
-		//	print("/");
-		//}
 	}
 
 	//TODO: check modules
@@ -98,37 +97,17 @@ extern(C) __gshared void kmain(uint magic, MultibootInfoStruct *multibootInfoAdd
 	kprintfln("Initializing Memory ");
 	MemoryAreas bootMemMap = MemoryAreas(multibootInfo);
 	//kprintfln(" memory maps start: %x end: %x", cast(size_t)bootMemMap.mmap, cast(size_t)bootMemMap.mmap + bootMemMap.mmapLength);
-	physicalMemory = PhysicalMemory(&bootMemMap, cast(size_t)&kernelStart, cast(size_t)&kernelEnd);
+	physicalMemory = PhysicalMemory(&bootMemMap, kernelStartPhys, kernelEndPhys);
 	kprintfln(" Available Memory: %d GB", cast(uint)(physicalMemory.getUsable() / 1_000_000_000));
 
 	//check kernel ELF sections
-	static if(config.DebugELF)
-	{
-		kprintfln("Checking Kernel ELF Sections");
-		kassert(multibootInfo.flags.isBitSet(5));
-		dumpELF(multibootInfo);
-	}
+	ELFObject kernelObj = ELFObject(&multibootInfo.ELFsec);
+	kernelObj.dumpELF();
 
-	//Allocate a few frames
-	// for(int i = 0; i < 10; i++)
-	// {
-	// 	physicalMemory.allocateFrame();
-	// }
-	setupInterrupts();	//needed to handle page faults
+	setupInterrupts();						//needed to handle page faults
 
-	//test VM subsystem
-	// size_t addr = 0x0000_0000A_8000_0000; //42 * 512 * 512 * 4096;
-	// size_t freshFrame = physicalMemory.allocateFrame();
-	// kprintfln("addr: %x, phys: %x map to: %x", addr, virtualToPhysical(addr), freshFrame);
-	// mapPage(freshFrame, addr, PAGEFLAGS.present);
-	// kprintfln("phys: %x", virtualToPhysical(addr));
-	// kprintfln("next free frame: %x", physicalMemory.allocateFrame());
-
-	// //unmap page
-	// kprintfln("contents? (mapped): %x", *cast(ulong*)addr);
-	// unmap(addr);
-	// kprintfln("phys after unmap: %x", virtualToPhysical(addr));
-	// kprintfln("contents? (unmapped): %x", *cast(ulong*)addr);
+	AddressSpace mySpace = AddressSpace(virtmemory.getPML4Phys());
+	testVMM(&mySpace);
 
 	kprintfln("Initalizing 8253 Timer");
 	timer.init();
@@ -146,6 +125,27 @@ extern(C) __gshared void kmain(uint magic, MultibootInfoStruct *multibootInfoAdd
 			hlt;
 		}
 	}
+}
+
+void testVMM(AddressSpace *activePageTable)
+{
+	//test VM subsystem
+	size_t addr = 0x0000_0000A_8000_0000; //42 * 512 * 512 * 4096;
+	size_t freshFrame = physicalMemory.allocateFrame();
+	size_t *ttt = cast(size_t*)0x1000;
+	*ttt = 0xCAFEBABE;
+	kprintfln("addr: %x, phys: %x map to: %x", addr, activePageTable.virtualToPhysical(addr), freshFrame);
+	activePageTable.mapPage(freshFrame, addr, PAGEFLAGS.present);
+	kprintfln("phys: %x", activePageTable.virtualToPhysical(addr));
+	kprintfln("as phys: %x", cast(ulong)*ttt);
+	kprintfln("as virt: %x", cast(ulong)*(cast(size_t*)addr));
+	kprintfln("next free frame: %x", physicalMemory.allocateFrame());
+
+	// //unmap page
+	kprintfln("contents? (mapped): %x", *cast(ulong*)addr);
+	activePageTable.unmap(addr);
+	kprintfln("phys after unmap: %x", activePageTable.virtualToPhysical(addr));
+	kprintfln("contents? (unmapped): %x", *cast(ulong*)addr);
 }
 
 void printSupportedExtensions(int cpuidMaxLevel)

@@ -1,22 +1,29 @@
 module Config;
 
 /**
- * ELF sections will be printed during boot
+ * System parameters.
+ * TODO: version these eventually with version(x86_64), etc.
  */
-enum DebugELF = true;
+public enum FRAME_SIZE = 4096;				//2^12
+public enum FRAME_SHIFT = 12;				//left or right shift to convert between page num and start address
 
 /**
- * Print debugging information in physical
- * memory allocator
- */
-enum DebugFrameAlloc = true;
+* ELF sections will be printed during boot
+*/
+public enum DebugELF = true;
 
 /**
- * Timer interrupts will print a "." to screen
- */
-enum DebugTimer = false;
+* Print debugging information in physical
+* memory allocator
+*/
+public enum DebugFrameAlloc = true;
 
 /**
- * Screen output will be mirrored to a serial device
- */
-enum SerialConsoleMirror = true;
+* Timer interrupts will print a "." to screen
+*/
+public enum DebugTimer = false;
+
+/**
+* Screen output will be mirrored to a serial device
+*/
+public enum SerialConsoleMirror = true;

@@ -396,7 +396,7 @@ isrCommon:
 	; TODO: use FS for thread-local storage
 	; TODO: save xmm registers
 	push rax
-	mov rax, isr 			; call isr() in interrupt.d
+	mov rax, QWORD isr 			; call isr() in interrupt.d
 	call rax				; call isr()
 	pop rax
 	pop r11
@@ -426,7 +426,7 @@ irqCommon:
 	; TODO: use FS for thread-local storage
 	; TODO: save xmm registers
 	push rax
-	mov rax, irq 			; call irq() in interrupt.d
+	mov rax, QWORD irq 			; call irq() in interrupt.d
 	call rax				; call irq()
 	pop rax
 	pop r11

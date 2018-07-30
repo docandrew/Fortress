@@ -2,7 +2,9 @@
 ; featuring code from osdev.org/Bare_Bones_with_NASM & Phil Opp
 
 global stack_ptr
-extern long_mode_start
+;global stackandpagetables
+
+extern trampoline
 
 ; Declare constants used for creating a multiboot header.
 MBALIGN     equ  1<<0                   ; align loaded modules on page boundaries
@@ -22,7 +24,8 @@ MultiBootHeader:
 STACKSIZE equ 0x16384
 
 section .text
- 
+bootstrap:
+
 ; The linker script specifies _start as the entry point to the kernel and the
 ; bootloader will jump to this position once the kernel has been loaded. It
 ; doesn't make sense to return from this function as the bootloader is gone.
@@ -43,8 +46,6 @@ _start:
 	call check_multiboot
 	call check_cpuid
 	call check_long_mode
-
-	call setup_page_tables
 	call enable_paging
 
 	lgdt [gdt64.pointer]
@@ -56,7 +57,8 @@ _start:
 	mov es, ax
 
 	; jump to long mode
-	jmp gdt64.code:long_mode_start
+	; trampoline to 64-bit
+	jmp gdt64.code:trampoline
 
 ; error handler
 error:
@@ -120,43 +122,11 @@ check_long_mode:
 	mov al, "2"
 	jmp error
 
-setup_page_tables:
-	; map p4 table recursively
-	mov eax, p4_table
-	or eax, 11b			; present + writable
-	mov [p4_table + 511 * 8], eax
-
-	; map first p4 entry to p3 table
-	mov eax, p3_table
-	or eax, 11b			; present + writable
-	mov [p4_table], eax
-
-	; map first p3 entry to p2 table
-	mov eax, p2_table
-	or eax, 11b			; present + writable
-	mov [p3_table], eax
-
-	; map each p2 entry to a 2MiB page
-	mov ecx, 0			; counter var
-
-.map_p2_table:
-	; map each ecx-th entry to a page that starts at address 2MiB * ECX 
-	; (identity-mapped - same virtual/physical addresses)
-	mov eax, 0x200000				; 2 MiB
-	mul ecx 						; start address of ecx-th page
-	or eax, 10000011b				; present + writable + huge (2MiB)
-	mov [p2_table + ecx * 8], eax 	; map ecx-th entry	
-
-	inc ecx 						; increase counter
-	cmp ecx, 512 					; 512 pages
-	jne .map_p2_table				; map the next entry
-	ret
-
 enable_paging:
 	mov eax, p4_table				; mov p4 table address into CR3
 	mov cr3, eax
 
-	; enable PAE (physical address extensions)
+	; enable PAE, set CR4.PAE (bit 5) = 1
 	mov eax, cr4
 	or eax, 1 << 5
 	mov cr4, eax
@@ -174,25 +144,7 @@ enable_paging:
 	mov cr0, eax
 	ret
 
-
-section .bss
-align 4096
-;p5_table
-;	resb 4096			; future Intel spec (56-bit virtual addresses)
-p4_table:
-	resb 4096			; reserve 4096 bytes (512 entries, 64-bits each)
-p3_table:
-	resb 4096			; for each page table
-p2_table:
-	resb 4096
-p1_table:				; not used w/ 2MiB pages
-	resb 4096
-	
-stack:
-	resb STACKSIZE
-stack_ptr:
-
-section .rodata
+; section .rodata
 gdt64:
 	dq 0;												; 8-byte offset (null) 0x08 offset for code segment
 .code: equ $ - gdt64
@@ -202,3 +154,45 @@ gdt64:
 .pointer:
 	dw $ - gdt64 - 1
 	dq gdt64
+
+; location of our early bootstrap stack
+stackandpagetables:
+stack:
+	times STACKSIZE db 0
+stack_ptr:
+
+;p5_table					; future Intel spec (56-bit virtual addresses)
+
+; h/t https://wiki.osdev.org/D_barebone_with_ldc2
+; Since the page tables are page-aligned, we can just set each table entry
+; to their respective address, since the bottom 12 bits are already 0.
+;
+; in this bootstrap code, we identity map lower 40 MB, then map 40MB starting at 0xFFFF_8000_0000_0000
+; to the same first 40 MB of physical mem.
+;
+align 4096
+p4_table:					; PML4E
+	dq (p3_table + 0x3)		; create p4 index in lower half (0), present | writable
+	times 255 dq 0			 
+	dq (p3_table + 0x3)		; create p4 index for higher half (256), present | writable
+	times 254 dq 0
+	dq (p4_table + 0x3)		; recursive p4 mapping entry -> points to itself.
+align 4096
+p3_table:					; PDPE
+	dq (p2_table + 0x3)		; p3 index should be 0
+	times 511 dq 0			; all other entries non-present
+align 4096
+p2_table:
+	%assign i 0
+	%rep 25
+	dq (p1_table + i + 0x3)
+	%assign i i+4096
+	%endrep
+	times (512-25) dq 0
+align 4096
+p1_table:					; 25 tables here, identity mapped first 40MB
+	%assign i 0				
+	%rep 512*25
+	dq (i << 12) | 0x03	; TODO: 40 MB is probably overkill 
+	%assign i i+1
+	%endrep

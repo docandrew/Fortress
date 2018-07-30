@@ -1,37 +1,45 @@
 /* The bootloader will look at this image and start execution at the symbol
    designated as the entry point. */
+OUTPUT_FORMAT(elf64-x86-64)
 ENTRY(_start)
+KERNEL_PHYS = 0x00100000;
+KERNEL_VIRT = 0xFFFF800000000000;
 
 /* Tell where the various sections of the object files will be put in the final
    kernel image. */
 SECTIONS
 {
-	. = 0x00100000;					/*load kernel at 0x00100000*/
-	
-	kernelStart = .;				/*exports the "kernelstart" symbol so we can use it in our D code*/
+	. = KERNEL_PHYS;
 
-	.multiboot : {
-		*(.multiboot)
+	.bootstrap : {
+		KEEP(*(.multiboot))				/* keep multiboot header at beginning of file */
+		build/boot.o (.multiboot .text)
+		build/trampoline.o (.text)		/* need an elf64 object in low memory that we can use for a 64-bit jump */
 	}
 
-	.text : {
+	. += KERNEL_VIRT;					/*link kernel at higher half. Use += here so virt -> phys mapping
+										  doesn't smash our bootstrap stack & page tables */
+
+	.text ALIGN(4K) : AT(ADDR(.text) - KERNEL_VIRT){
+		*(EXCLUDE_FILE(*build/boot.o) .text)
+		*(EXCLUDE_FILE(*build/trampoline.o) .text)
 		*(.text .text.*)
 	}
 
-	.rodata : {
+	.rodata ALIGN(4K) : AT(ADDR(.rodata) - KERNEL_VIRT){
 		*(.rodata .rodata.*)
 	}
 
-	.data : {						/*this is to combine all the D typeinfo stuff in one ELF section*/
+	.data ALIGN(4K) : AT(ADDR(.data) - KERNEL_VIRT){
 		*(.data .data.*)
 	}
 
-	stackandpagetables = .;			/*exports the "stackandpagetables" symbol*/
-	.bss : {
+	.bss ALIGN(4K) : AT(ADDR(.bss) - KERNEL_VIRT){
 		sbss = .;
 		*(COMMON)
-		*(.bss)
+		*(.bss .bss.*)
 		ebss = .;
 	}
-	kernelEnd = .;					/*exports the "kernelEnd" symbol*/
+	KERNEL_END_VIRT = .;									/* exports */				
+	KERNEL_START_VIRT = KERNEL_PHYS + KERNEL_VIRT;
 }

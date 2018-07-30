@@ -114,6 +114,19 @@ enum SHT_HIPROC = 0x7FFFFFFF;
 enum SHT_LOUSER = 0x80000000;	//specifies lower bound of range of indexes reserved for application programs
 enum SHT_HIUSER = 0x8FFFFFFF;	//specifies upper bound of range of indexes reserved for application programs
 
+/**
+ * Section header table for ELF as returned by multiboot loader
+ */
+struct ELFSectionHeader
+{
+	align(1):				//packed
+							//BYTE
+	uint num;				// 0 number of entries
+	uint size;				// 4 size of each entry
+	uint addr;				// 8 address of entry
+	uint shndx;				//12 string table used as index of names, index of section that IS the string table.
+}
+
 // ELF64 Section Header will be 64-bytes in size (0x40)
 // Section header table is array of these structures
  struct ELF64SectionHeader
@@ -130,33 +143,122 @@ enum SHT_HIUSER = 0x8FFFFFFF;	//specifies upper bound of range of indexes reserv
 	uint 	sh_info; 		/* Miscellaneous information */
 	ulong 	sh_addralign; 	/* Address alignment boundary */
 	ulong 	sh_entsize; 	/* Size of entries, if section has table */
- }
+}
 
-
- void dumpELF(ref MultibootInfoStruct multibootInfo)
- {
- 	ELFSectionHeader *elfsec = &multibootInfo.ELFsec;
+struct ELFObject
+{
+	private ELFSectionHeader *elfsec;
+	private int currSection;
 	char *stringTable;
 
-	kprintfln(" ELF sections: %d, section size: %d, address: %x, str table idx: %d", elfsec.num, elfsec.size, elfsec.addr, elfsec.shndx);
-		
-	ELF64SectionHeader *sechdr;
-
-	//find section header string table:
-	if(elfsec.num > 0 && elfsec.shndx != SHN_UNDEF)
+	this(ELFSectionHeader *elfsec)
 	{
-		sechdr = cast(ELF64SectionHeader *)(elfsec.addr + (elfsec.shndx * elfsec.size));	//find string table section
-		stringTable = cast(char *)sechdr.sh_addr;											//find string table itself
+		this.elfsec = elfsec;
+		ELF64SectionHeader *strSection = cast(ELF64SectionHeader *)(elfsec.addr + (elfsec.shndx * elfsec.size));
+		stringTable = cast(char *)strSection.sh_addr;
 	}
 
-	//kprintfln(" ELF section %d, type: %d, size: %d, offset: %x", elfsec.shndx, sechdr.sh_type, cast(uint)sechdr.sh_size, cast(uint)sechdr.sh_offset);
-	//kprintfln(" addr of string table: %x: string table: ", cast(ulong)stringTable);
-	//printchars(stringTable + 11, 72);
-
-	//iterate through section headers
-	foreach(i; 0 .. elfsec.num)
+	uint getNumSections()
 	{
-		sechdr = cast(ELF64SectionHeader *)(elfsec.addr + (i * elfsec.size));
-		kprintfln(" #%d, addr: %x, type: %d, size: %x, name: %s", i, sechdr.sh_addr, sechdr.sh_type, cast(uint)sechdr.sh_size, stringTable + sechdr.sh_name);
+		return elfsec.num;
+	}
+
+	uint getHeaderSize()
+	{
+		return elfsec.size;
+	}
+
+	size_t getHeaderAddress()
+	{
+		return cast(size_t)elfsec.addr;
+	}
+
+	uint getStringTableIndex()
+	{
+		return elfsec.shndx;
+	}
+
+	char *getSectionName(uint section)
+	{
+		return cast(char *)(stringTable + getSection(section).sh_name);
+	}
+
+	size_t getSectionAddr(uint section)
+	{
+		return getSection(section).sh_addr;
+	}
+
+	uint getSectionType(uint section)
+	{
+		return getSection(section).sh_type;
+	}
+
+	size_t getSectionSize(uint section)
+	{
+		return getSection(section).sh_size;
+	}
+
+	ELF64SectionHeader *getSection(size_t i)
+	{
+		return cast(ELF64SectionHeader *)(elfsec.addr + (i * elfsec.size));
+	}
+
+	/**
+	 * range interface for iterating through the ELF sections in this object
+	 */
+	@property ELF64SectionHeader *front()
+	{
+		return getSection(currSection);
+	}
+
+	@property void popFront()
+	{
+		//auto ret = getSection(currSection);
+		currSection++;
+		//return ret;
+	}
+
+	@property bool empty()
+	{
+		if(currSection >= elfsec.num - 1)
+		{
+			currSection = 0;
+			return true;
+		}
+
+		return false;
+	}
+
+	size_t length()
+	{
+		return elfsec.num;
+	}
+
+	ELF64SectionHeader *opIndex(size_t i)
+	{
+		return getSection(i);
+	}
+
+	void reset()
+	{
+		currSection = 0;
+	}
+
+	void dumpELF()
+	{
+		kprintfln(" ELF sections: %d, section size: %d, address: %x, str table idx: %d", elfsec.num, 
+																						elfsec.size, 
+																						elfsec.addr, 
+																						elfsec.shndx);
+
+		int i;
+		foreach(sechdr; this)
+		{
+			i++;
+			kprintfln(" #%d, addr: %x, type: %d, size: %x, name: %s", i, getSectionAddr(i), 
+																		getSectionType(i), 
+																		getSectionSize(i), 
+																		getSectionName(i));
+		}
 	}
 }

@@ -35,10 +35,11 @@ require yasm on Linux and GNU binutils for the ld linker.
 
 Build Instructions
 ------------------
-	>make
+    >make
 
 To generate .iso (which could be used to burn a bootable CD-R or USB stick):
-	>make iso
+
+    >make iso
 
 Note that the above command relies on **grub-mkrescue**, which needs 
 **mtools** and 
@@ -47,10 +48,10 @@ it will silently fail to produce the .iso. "make iso" also needs the
 **grub-pc-bin** package installed to work correctly.
 
 To launch QEMU w/ appropriate arguments for aforementioned .iso:
-	>make run
+    >make run
 
 Or to just run off the kernel binary:
-	>make run-raw
+    >make run-raw
 
 It runs in VirtualBox as well, when booting from the .iso.
 
@@ -59,8 +60,7 @@ Contributor Notes
 This is written in D using the -betterC flag to prevent use of garbage
 collection, but there are some other gotchas in addition to the 
 
-D symbols referenced in .asm files needs to be 
-	extern(C) \__gshared. 
+D symbols referenced in .asm files needs to be `extern(C) __gshared`
 
 The extern(C) is so that the name is not mangled. gshared is required
 because thread-local storage (TLS) is not functional in the early

@@ -48,9 +48,11 @@ it will silently fail to produce the .iso. "make iso" also needs the
 **grub-pc-bin** package installed to work correctly.
 
 To launch QEMU w/ appropriate arguments for aforementioned .iso:
+
     >make run
 
 Or to just run off the kernel binary:
+
     >make run-raw
 
 It runs in VirtualBox as well, when booting from the .iso.

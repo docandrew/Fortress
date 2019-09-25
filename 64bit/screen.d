@@ -3,6 +3,14 @@ module screen;
 import util;
 import config;
 
+/**
+ * This module handles basic text output to an 80x25 EGA
+ * "screen"
+ *
+ * TODO: all the char printing stuff needs to go to a 
+ * buffer that we can render however we like later on.
+ */
+
 __gshared ubyte* videoMemory = cast(ubyte *)0xFFFF_8000_000B_8000;
 __gshared uint index;
 
@@ -33,7 +41,6 @@ uint getColumn()
 {
 	return index % 160;
 }
-
 
 //TODO: Implement some decent string handling and get rid of all this silliness
 //TODO: make the screen display portion of a larger text buffer
@@ -82,34 +89,39 @@ uint getColumn()
 		COM1.write(val);
 	}
 
-	if(val == '\n' || val == '\r')
-	{
-		index = (getLine() * 160) + 160;
+    // If using a linear framebuffer, this code will not be
+    // compiled in. 
+    static if(!config.framebufferVideo)
+    {
+        if(val == '\n' || val == '\r')
+        {
+            index = (getLine() * 160) + 160;
 
-		if(index >= 80 * 25 * 2)
-		{
-			scrollUp();
-		}
-	}
-	else if(val == '\t')
-	{
-		index += 4;
+            if(index >= 80 * 25 * 2)
+            {
+                scrollUp();
+            }
+        }
+        else if(val == '\t')
+        {
+            index += 4;
 
-		if(index >= 80 * 25 * 2)
-		{
-			scrollUp();
-		}
-	}
-	else if(val == '\0')
-	{
-		//null char, do nothing.
-	}
-	else
-	{
-		videoMemory[index] = val;
-		videoMemory[index+1] = color;
-		index+=2;
-	}
+            if(index >= 80 * 25 * 2)
+            {
+                scrollUp();
+            }
+        }
+        else if(val == '\0')
+        {
+            //null char, do nothing.
+        }
+        else
+        {
+            videoMemory[index] = val;
+            videoMemory[index+1] = color;
+            index+=2;
+        }
+    }
 }
 
 void kprintfln(T...)(immutable string format, T args)

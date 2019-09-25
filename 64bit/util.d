@@ -4,7 +4,7 @@
 module util;
 
 import config;
-
+import virtmemory;
 import std.traits;
 
 /**
@@ -89,7 +89,7 @@ pure @safe size_t roundUp(size_t address, size_t multiple = FRAME_SIZE)
  * Params:
  *  multiple = must be a power of 2. By default this is FRAME_SIZE
  */
-pure @safe size_t roundDown(size_t address, size_t multiple = FRAME_SIZE)
+pure @safe size_t roundDown(size_t address, size_t multiple = virtmemory.FRAME_SIZE)
 {
 	//return roundUp(address, multiple) - multiple;
 	return (address & ~(multiple-1));

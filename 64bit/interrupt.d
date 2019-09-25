@@ -106,6 +106,7 @@ extern(C) __gshared void irq13();
 extern(C) __gshared void irq14();
 extern(C) __gshared void irq15();
 
+//Syscall IRQ
 extern(C) __gshared void isr128();
 
 __gshared IDTEntry[256] idt;

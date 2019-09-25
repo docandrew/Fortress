@@ -19,11 +19,12 @@ Elf64_Sxword 8 8 Signed long integer
 unsigned char 1 1 Unsigned small integer
 
 */
+/** Magic number passed to kmain by a multiboot-compliant loader */
+enum MULTIBOOT_MAGIC = 0x2badb002;
 
-/*
- *  FILE HEADER
+/**
+ *  ELF File header Identifier
  */
-
 enum ELFID
 {
 	MAG0 = 0,		//file identification (should contain '\x7F', 'E', 'L', 'F')
@@ -244,6 +245,9 @@ struct ELFObject
 		currSection = 0;
 	}
 
+    /**
+     * Debugging function to dump kernel ELF sections
+     */
 	void dumpELF()
 	{
 		kprintfln(" ELF sections: %d, section size: %d, address: %x, str table idx: %d", elfsec.num, 

@@ -9,28 +9,44 @@ import config;
 import util;
 import assertpanic;
 import screen;
-import physmemory;
+import BootstrapFrameAllocator;
 
 /**
- * h/t Phil Opp https://os.phil-opp.com for recursive page table assistance
+ * Base virtual address for the kernel - start of higher-half memory
  */
+public enum KERNEL_BASE = 0xFFFF_8000_0000_0000;
 
+/**
+ * 2^12
+ */
+public enum FRAME_SIZE = 4096;
+
+/**
+ * x86-64 small pages
+ */
 public enum PAGE_SIZE = 4096;
 
+/**
+ * 4096 = 1 << 12;
+ * left or right shift to convert between page num and start address
+ */
+public enum FRAME_SHIFT = 12;
+
 /** 
- *  Specifies which bits of the physical address are used in the page table mappings
- *  also see FRAME_SHIFT and FRAME_SIZE in config 
+ * Specifies which bits of a page table entry
+ * contain the address of the next page directory
+ * or page. (Intel/AMD manual)
  */
 public enum FRAME_MASK = 0x000F_FFFF_FFFF_F000;
 
 /**
- * Number of entries in a page table. Here we use 4KiB pages, 512 * 64bits = 4096.
+ * Number of entries in a page table. Here we use 4KiB pages, 
+ * 512 * 64bits = 4096.
  */
 public enum NUM_PAGE_TABLE_ENTRIES = 512;
 
 /**
  * Flags for Page Table Entries
- * 
  */
 public enum PAGEFLAGS : ulong
 {
@@ -48,19 +64,12 @@ public enum PAGEFLAGS : ulong
 	NXE = cast(ulong)1 << 63,
 }
 
-//TODO: create some more default settings here
-// immutable PTEFlags PTEUnused;													//default no flags set (unused PTE)
-immutable ulong KERNELDATA = PAGEFLAGS.writable | PAGEFLAGS.NXE;
-immutable ulong KERNELCODE = PAGEFLAGS.writable;
-immutable ulong USERDATA = PAGEFLAGS.writable | PAGEFLAGS.user | PAGEFLAGS.NXE;
-immutable ulong USERCODE = PAGEFLAGS.writable | PAGEFLAGS.user;
-
-/**
- * recursively-mapped reference to the P4 table.
- */
-immutable PML4 *getPML4 = cast(PML4*)0xFFFF_FFFF_FFFF_F000;
-
-//public alias size_t VirtualAddress;
+immutable ulong PG_KERNELDATA = PAGEFLAGS.present | PAGEFLAGS.writable | PAGEFLAGS.NXE;
+immutable ulong PG_KERNELCODE = PAGEFLAGS.present | PAGEFLAGS.writable;
+immutable ulong PG_USERDATA =   PAGEFLAGS.present | PAGEFLAGS.writable | PAGEFLAGS.user | PAGEFLAGS.NXE;
+immutable ulong PG_USERCODE =   PAGEFLAGS.present | PAGEFLAGS.writable | PAGEFLAGS.user;
+immutable ulong PG_IO =         PAGEFLAGS.present | PAGEFLAGS.writable | PAGEFLAGS.NXE | 
+                                PAGEFLAGS.writeThrough | PAGEFLAGS.cacheDisabled;
 
 alias PML4 = PageTable!(4);
 alias PDP = PageTable!(3);
@@ -121,11 +130,6 @@ size_t getOffset(size_t virtualAddress)
 }
 
 /**
- * get active page table through recursive PML4E entry
- */
-//public __gshared AddressSpace activePageTable;
-
-/**
  * isValidAddress takes a virtual address and determines
  * whether it is valid or not. In current x86_64 implementations,
  * only the lower 48 bits of the address are used, and the upper
@@ -141,19 +145,10 @@ public bool isValidAddress(size_t virtualAddress)
 }
 
 /**
-* getPML4 returns the virtual address of the recursively-mapped
-* PML4 page directory
-*/
-// public PML4* getPML4()
-// {
-// 	return cast(PML4*)0xFFFF_FFFF_FFFF_F000;
-// }
-
-/**
- * getPML4Phys returns the physical address of the PML4E table
- * (Address Space) currently in use.
+ * getPML4Phys returns a pointer to the 
+ * P4 table currently in use.
  */
-public size_t getPML4Phys()
+public PageTable!4* getPML4()
 {
 	size_t retVal;
 	asm
@@ -161,7 +156,7 @@ public size_t getPML4Phys()
 		mov RAX, CR3;
 		mov retVal, RAX;
 	}
-	return retVal;
+	return cast(PageTable!4*) retVal;
 }
 
 /**
@@ -182,15 +177,7 @@ public struct AddressSpace
 	/**
 	 * physical address of this AddressSpace's top level page table
 	 */
-	private size_t p4table;
-
-	//TODO: add some flags here for user vs kernel, permissions, 
-	// owning process, etc.
-
-	//TODO: make easy way to instantiate a new address space
-	// that will ensure keeping kernel pages (higher-half) mapped.
-	// Should be as easy as ensuring that the 256th P4 entry
-	// always points to the original P3 table.
+	private PageTable!4* p4table;
 
 	/**
 	 * constructor for this AddressSpace
@@ -198,7 +185,7 @@ public struct AddressSpace
 	 * Params:
 	 * p4tableAddr = the physical address of the PML4E page table.
 	 */
-	public this(size_t p4tableAddr)
+	public this(PageTable!4* p4tableAddr)
 	{
 		p4table = p4tableAddr;
 	}
@@ -210,7 +197,7 @@ public struct AddressSpace
 	* Returns: physical address if mapped to virtual address,
 	* 0 (null), otherwise.
 	*/
-	public static size_t virtualToPhysical(size_t virtualAddress, P4 *p4 = getPML4)
+	public static size_t virtToPhys(size_t virtualAddress, P4 *p4 = getPML4())
 	{
 		//walk page tables
 		//kassert(virtualAddress.isValidAddress());
@@ -232,21 +219,33 @@ public struct AddressSpace
 		P3 *p3 = p4.getNextTable(p4index);
 		if(p3 == null) return 0; //0xDED3_8000_0000_0000; //kassert(false);
 		
-		//kprintfln(" virtToPhys: addr of P3: %x, P3 index: %x", cast(ulong)p3, p3index);
+        static if(DebugVMM)
+        {
+		    kprintfln(" virtToPhys: index to P3: %x, addr of P3: %x", p4index, cast(ulong)p3);
+        }
 
 		P2 *p2 = p3.getNextTable(p3index);
 		if(p2 == null) return 0; //0xDED2_8000_0000_0000; //kassert(false);
 
-		//kprintfln(" virtToPhys: addr of P2: %x, P2 index: %x", cast(ulong)p2, p2index);
+        static if(DebugVMM)
+        {
+		    kprintfln(" virtToPhys: index to P2: %x, addr of P2: %x", p3index, cast(ulong)p2);
+        }
 
 		P1 *p1 = p2.getNextTable(p2index);
 		if(p1 == null) return 0; //0xDED1_8000_0000_0000; //kassert(false);
 
-		//kprintfln(" virtToPhys: addr of P1: %x, P1 index: %x", cast(ulong)p1, p1index);
+        static if(DebugVMM)
+        {
+		    kprintfln(" virtToPhys: index to P1: %x, addr of P1: %x", p2index, cast(ulong)p1);
+        }
 
 		PageTableEntry pte = p1.tableEntries[p1index];
 
-		//kprintfln(" virtToPhys: PTE contents: %x", pte.all);
+        static if(DebugVMM)
+        {
+		    kprintfln(" virtToPhys: PTE contents: %x", pte.all);
+        }
 
 		if(!pte.isZero)
 		{
@@ -265,17 +264,19 @@ public struct AddressSpace
 	* Params:
 	*  virtualAddress - must be page aligned
 	*  flags - see PAGEFLAGS enum
+    *  allocate - a frame allocator's allocate delegate (bootstrapFrameAllocator.allocateFrame() by default)
 	*
 	* Returns true if successful, false otherwise
 	*/
-	public size_t map(T = PhysicalMemory*)(size_t virtualAddress, ulong flags, T allocator)
+	public size_t map(size_t virtualAddress, ulong flags, 
+                      size_t function() allocate = &BootstrapFrameAllocator.allocateFrame)
 	{
 		if(!virtualAddress.isValidAddress() || virtualAddress % PAGE_SIZE != 0)
 		{
 			return 0;
 		}
 
-		return mapPage(allocator.allocate(), virtualAddress, flags | PAGEFLAGS.present);
+		return mapPage(allocate(), virtualAddress, flags | PAGEFLAGS.present);
 	}
 
 	/**
@@ -291,8 +292,9 @@ public struct AddressSpace
 	* 
 	* Returns: virtual address if mapping was successful, 0 (null) otherwise
 	*
+    * TODO: make static?
 	*/
-	public size_t mapPage(size_t physicalAddress, size_t virtualAddress, ulong flags, P4 *p4 = getPML4)
+	public size_t mapPage(size_t physicalAddress, size_t virtualAddress, ulong flags, P4 *p4 = getPML4())
 	{
 		if(!virtualAddress.isValidAddress() || physicalAddress % 4096 != 0 || virtualAddress % 4096 != 0)
 		{
@@ -321,8 +323,10 @@ public struct AddressSpace
 	/**
 	 * identityMap maps a virtual address to the same physical address
 	 * (must be page-aligned)
+     *
+     * TODO: default is getPML4(), but I think this should be the _kernel's_ P4 table only.
 	 */
-	public size_t identityMap(size_t physicalAddress, ulong flags, P4 *p4 = getPML4)
+	public size_t identityMap(size_t physicalAddress, ulong flags, P4 *p4 = getPML4())
 	{
 		return mapPage(physicalAddress, physicalAddress, flags, p4);
 	}
@@ -332,34 +336,64 @@ public struct AddressSpace
 	* virtual -> physical mapping.
 	*
 	* It only removes the PTE (P1) entry.
+    *
+    * Params:
+    *  virtualAddress - address to be unmapped. If not page aligned, entire page containing this address will be unmapped.
+    *  p4 - pointer to top-level page table mapping this virtual address
+    *  free - pointer to frame allocator's free() function
 	*/
-	public bool unmap(size_t virtualAddress, P4 *p4 = getPML4)
+	public bool unmap(size_t virtualAddress, P4 *p4 = getPML4(), 
+                      void function(size_t) free = &BootstrapFrameAllocator.freeFrame)
 	{
 		//TODO: Consider just checking for page-alignment
+        //TODO: more error checking here
 		virtualAddress = roundDown(virtualAddress);
-		//kprintfln("unmapping virtual address: %x", virtualAddress);
 
-		P1 *p1 = p4.getNextTable(virtualAddress.getP4Index)
-					.getNextTable(virtualAddress.getP3Index)
-					.getNextTable(virtualAddress.getP2Index);	//walk page tables to find PTE
+		P3 *p3 = p4.getNextTable(virtualAddress.getP4Index);
+		P2 *p2 = p3.getNextTable(virtualAddress.getP3Index);
+        size_t p2Index = virtualAddress.getP2Index;
+
+        static if(DebugVMM)
+        {
+		    kprintfln("unmapping virtual address: %x", virtualAddress);
+            kprintfln("p4 at: %x", cast(ulong)p4);
+            kprintfln("p3 at: %x", cast(ulong)p3);
+            kprintfln("p2 at: %x", cast(ulong)p2);
+        }
+
+        if((*p2)[p2Index].huge)
+        {
+            static if(DebugVMM)
+            {
+                kprintfln("Unmapping huge page, removing entry %x from p2 table at %x", p2Index, cast(ulong)p2);
+            }
+            kprintfln("a");
+            //size_t physAddr = (*p2)[p2Index].getAddress();
+            (*p2)[p2Index].zeroize();
+            kprintfln("b");
+            //free(physAddr);       //free huge pages separately.
+            invalidatePage(virtualAddress);
+            flushTLB();             // TODO: IS THIS NECESSARY?
+            kprintfln("c");
+            return true;
+        }
+        
+        // Not a huge page
+        P1 *p1 = p2.getNextTable(virtualAddress.getP2Index);	//walk page tables to find PTE
 		
-		if(p1 == null)	//p1 not present for huge pages
+		if(p1 == null)	  
 		{
+            //p1 entry not present
+            kprintf("Attempted unmap of a non-mapped 4k page");
 			return false;
 		}
 
 		size_t physAddr = (*p1)[virtualAddress.getP1Index].getAddress();
-
-		(*p1)[virtualAddress.getP1Index].zeroize();								//clear entry
-		physicalMemory.freeFrame(physAddr);										//return frame to free list
-		//allocator.free(physAddr);
-
-		//void *va = cast(void*)&virtualAddress;
-		//invalidate TLB entry.
-		invalidatePage(virtualAddress);
+		(*p1)[virtualAddress.getP1Index].zeroize();			//clear entry
+		free(physAddr);										//return frame to free list
+		invalidatePage(virtualAddress);                     //invalidate TLB entry.
 
 		//TODO: once last P1 entry is removed, remove the parent P2 entry?
-
 		return true;
 	}
 
@@ -380,6 +414,7 @@ public struct AddressSpace
 }
 
 //Each table has 512 entries of 64-bits each (x64)
+// used strictly for 4k tables at this time.
 private struct PageTable(int level) if (level > 0 && level <= 4)
 {
 	align(1):
@@ -406,7 +441,7 @@ private struct PageTable(int level) if (level > 0 && level <= 4)
 	/**
 	 * zeroize all page table entries in this table
 	 */
-	public void zeroize()
+	public void zeroizeTable()
 	{
 		foreach(PageTableEntry entry; tableEntries)
 		{
@@ -431,8 +466,11 @@ private struct PageTable(int level) if (level > 0 && level <= 4)
 
 			if(this[index].present && !this[index].huge)
 			{
-				//for recursive mapping
-				return cast(PageTable!(level-1)*)((cast(size_t)&this << 9) | (index << FRAME_SHIFT));
+                static if(config.DebugVMM)
+                {
+                    kprintfln(" getNextTable() index: %x value: %x", index, cast(ulong)this[index]);
+                }
+				return cast(PageTable!(level-1)*)(this[index].getAddress);
 			}
 			else
 			{
@@ -444,30 +482,47 @@ private struct PageTable(int level) if (level > 0 && level <= 4)
 	/**
 	 * createNextTable returns the address of the next level of table
 	 * or, if one doesn't exist, it will create it. This allocates
-	 * memory using PhysicalMemory.allocateFrame() and makes the new
+	 * memory using whatever frame allocator is passed (bootstrapFrameAllocator
+     * by default) and makes the new
 	 * PageTableEntry point to it.
+     *
+     * Params:
+     *  index - index into this page table
+     *  allocate - pointer to a frame allocate function (BootstrapFrameAllocator.allocateFrame() by default)
 	 */
 	static if(level > 1)
 	{
-		auto createNextTable(size_t index)
+		auto createNextTable(size_t index, size_t function() allocate = &BootstrapFrameAllocator.allocateFrame)
 		{
-			//int myLev = level;
-			//kprintfln("Creating table: level %d, index %x", myLev, index);
 			kassert(index < 512);
 
 			if(getNextTable(index) == null)						//next level doesn't exist, allocate new one
 			{
-				size_t newTableAddr = physicalMemory.allocateFrame();
+                static if(config.DebugVMM)
+                {
+			        kprintfln(" createNextTable(): Creating table: level %d, index %x", level-1, index);
+                }
+				
+                size_t newTableAddr = allocate();
+
+                static if(config.DebugVMM)
+                {
+                    kprintfln("  allocated new level %d table at %x", level-1, newTableAddr);
+                }
 				PageTableEntry newPTE;
 				newPTE.physAddr = newTableAddr >> FRAME_SHIFT;
 				newPTE.present = true;
 				newPTE.writable = true;
 				tableEntries[index] = newPTE;
-				//kprintfln("new table address: %x", newTableAddr);
+                //flushTLB();
 				return cast(PageTable!(level-1)*)newTableAddr;
 			}
 			else
 			{
+                static if(config.DebugVMM)
+                {
+                    kprintfln(" createNextTable(): next level already exists at index %x", index);
+                }
 				return getNextTable(index);
 			}
 		}
@@ -591,8 +646,6 @@ public void pageFaultHandler(ulong err)
 	if(!present)
 	{
 		kprintfln(" Page not present.");
-		//page not present in memory
-		//check swap file
 	}
 	//TODO: find out why fault occurred
 	panic(" Kernel Page Fault. Terminating.");

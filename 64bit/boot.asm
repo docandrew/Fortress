@@ -1,15 +1,26 @@
-; 
-; featuring code from osdev.org/Bare_Bones_with_NASM & Phil Opp
+; Author: Jon Andrew
+; with assist/inspiration from osdev.org/Bare_Bones_with_NASM & Phil Opp and others
 
-global stack_ptr
-;global stackandpagetables
+global bootstrap_stack_bottom32
+global bootstrap_stack_top32
+global p4_table
+global boot_p3_table
+global boot_p2_table
 
 extern trampoline
 
 ; Declare constants used for creating a multiboot header.
-MBALIGN     equ  1<<0                   ; align loaded modules on page boundaries
-MEMINFO     equ  1<<1                   ; provide memory map
-FLAGS       equ  MBALIGN | MEMINFO      ; this is the Multiboot 'flag' field
+; note that we do not set bit 16 in FLAGS here, so the boot loader will use
+; the entry address specified by our linker script.
+MBALIGN     equ  0x1                    ; align loaded modules on page boundaries
+MEMINFO     equ  0x2                    ; provide memory map
+VIDEOMODE   equ  0x4                    ; tell GRUB to set video mode (not used yet)
+
+; Uncomment this line to tell GRUB to use the video mode set in the header
+; Will also want to set config.framebufferVideo in config.d
+FLAGS       equ  MBALIGN | MEMINFO | VIDEOMODE     ; this is the Multiboot 'flag' field
+;FLAGS       equ MBALIGN | MEMINFO       ;
+
 MAGIC       equ  0x1BADB002             ; 'magic number' lets bootloader find the header
 CHECKSUM    equ -(MAGIC + FLAGS)        ; checksum of above, to prove we are multiboot
  
@@ -20,8 +31,21 @@ MultiBootHeader:
 	dd FLAGS
 	dd CHECKSUM
 
+; For memory info
+    dd 0x0
+    dd 0x0
+    dd 0x0
+    dd 0x0
+    dd 0x0
+
+; For setting video mode
+    dd 0x0          ; mode type (0-linear, 1-text)
+    dd 1024         ; width
+    dd 768          ; height
+    dd 16           ; bpp depth
+
 ; Stack setup (see end for location)
-STACKSIZE equ 0x16384
+STACKSIZE equ 0x8000
 
 section .text
 bootstrap:
@@ -37,7 +61,7 @@ _start:
  
 	; To set up a stack, we simply set the esp register to point to the top of
 	; our stack (as it grows downwards).
-	mov esp, stack_ptr
+	mov esp, bootstrap_stack_top32
 
 	; Before we start running checks, store multiboot header and magic # that was passed from GRUB
 	mov edi, eax 		; argument 1 (magic #) to kmain2 in boot64.asm (64-bit calling convention)
@@ -156,43 +180,52 @@ gdt64:
 	dq gdt64
 
 ; location of our early bootstrap stack
+; aligned so it looks pretty
+align 4096
 stackandpagetables:
-stack:
+bootstrap_stack_bottom32:
 	times STACKSIZE db 0
-stack_ptr:
+bootstrap_stack_top32:
 
 ;p5_table					; future Intel spec (56-bit virtual addresses)
 
 ; h/t https://wiki.osdev.org/D_barebone_with_ldc2
+; h/t xv6 x86-64 port as well.
 ; Since the page tables are page-aligned, we can just set each table entry
 ; to their respective address, since the bottom 12 bits are already 0.
 ;
-; in this bootstrap code, we identity map lower 40 MB, then map 40MB starting at 0xFFFF_8000_0000_0000
-; to the same first 40 MB of physical mem.
+; in this bootstrap code, we map all physical memory to both the lower-half
+; as well as the higher-half. Later, we'll unmap the lower-half.
 ;
+; We'll use huge (2MiB) pages here to start, then later we will switch
+; to a 4k paging system.
+;
+; This gives us 30-bits of usable addressing while we are using these
+; bootstrap page tables. Valid bootstrap addresses:
+; 0x0000_0000_0000_0000 - 0x0000_0000_4000_0000
+; 0xFFFF_8000_0000_0000 - 0xFFFF_8000_4000_0000
 align 4096
-p4_table:					; PML4E
-	dq (p3_table + 0x3)		; create p4 index in lower half (0), present | writable
+p4_table:				        ; PML4E
+	dq (boot_p3_table + 0x3)	; p4[0] = p3[0], present | writable
 	times 255 dq 0			 
-	dq (p3_table + 0x3)		; create p4 index for higher half (256), present | writable
+	dq (boot_p3_table + 0x3)	; p4[256] = p3[0], present | writable
 	times 254 dq 0
-	dq (p4_table + 0x3)		; recursive p4 mapping entry -> points to itself.
+
 align 4096
-p3_table:					; PDPE
-	dq (p2_table + 0x3)		; p3 index should be 0
-	times 511 dq 0			; all other entries non-present
+boot_p3_table:				    ; PDPE
+	dq (boot_p2_table + 0x3)	; p3[0] = p2[0], present | writable
+	times 511 dq 0			    ; all other entries non-present
+
 align 4096
-p2_table:
+boot_p2_table:                  ; PDE, set PDE.PS (bit 7) = 1 for 2MB pages
 	%assign i 0
-	%rep 25
-	dq (p1_table + i + 0x3)
-	%assign i i+4096
+	%rep 512
+	dq (i + 0x83)               ; huge, present, writable
+	%assign i (i + 0x200000)
 	%endrep
-	times (512-25) dq 0
-align 4096
-p1_table:					; 25 tables here, identity mapped first 40MB
-	%assign i 0				
-	%rep 512*25
-	dq (i << 12) | 0x03	; TODO: 40 MB is probably overkill 
-	%assign i i+1
-	%endrep
+;align 4096
+;boot_p1_table:				; PD. 512 2MB tables here, identity-mapped first 1GB
+;	%rep 512*25
+;	dq (i << 12) | 0x03	; TODO: 40 MB is probably overkill 
+;	%assign i i+1
+;	%endrep

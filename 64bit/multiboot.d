@@ -91,12 +91,20 @@ struct MultibootInfoStruct
 	uint config_table;			//60 pointer to ROM config table returned by BIOS GET CONFIG call
 	uint boot_loader_name;		//64 pointer to stringz containing boot loader info
 	uint apm_table;				//68 pointer to APM (advanced power management) table
-	uint vbe_control_info;		//72 Video info
-	uint vbe_mode_info;			//76 Video info
-	ushort vbe_mode;			//80 Video info
-	ushort vbe_interface_seg;	//82 Video info
-	ushort vbe_interface_off;	//84 Video info
-	ushort vbe_interface_len;	//86 Video info
+	uint vbe_control_info;		//72 Phys addr of control info returned by VBE Function 00h
+	uint vbe_mode_info;			//76 Phys addr of control info returned by VBE Function 01h
+	ushort vbe_mode;			//80 VBE mode in VBE 3.0 format
+	ushort vbe_interface_seg;	//82 Protected-mode interace
+	ushort vbe_interface_off;	//84 Protected-mode interface
+	ushort vbe_interface_len;	//86 Protected-mode interface
+    ulong framebuffer_addr;     //88 Physical framebuffer address
+    uint framebuffer_pitch;     //96 pitch
+    uint framebuffer_width;     //100
+    uint framebuffer_height;    //104
+    ubyte framebuffer_bpp;      //108
+    ubyte framebuffer_type;     //109 If set to 0, indexed color is used. 
+                                //    If set to 1, then direct RGB color is used
+    ubyte[5] color_info;        //110-115
 }
 
 //Boot modules for kernel
